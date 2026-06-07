@@ -1,8 +1,9 @@
 """Phone OTP issuing + verification.
 
-Demo mode (default) keeps codes in memory and returns them in the API response
-so the flow is testable without an SMS provider. To send real SMS, plug a
-provider into ``_deliver`` and set ``otp_demo_mode=false``.
+Codes are generated and verified here (so we own the TTL and attempt cap);
+delivery is delegated to an :class:`SmsSender`. In demo mode the sender just
+logs the code and the API echoes it back so the flow is testable without a real
+phone; otherwise a real provider (Twilio / MSG91) sends the SMS.
 """
 from __future__ import annotations
 
@@ -12,6 +13,7 @@ from dataclasses import dataclass
 
 from app.core.config import Settings
 from app.core.logging import get_logger
+from app.services.sms import SmsSender
 
 logger = get_logger(__name__)
 
@@ -32,31 +34,29 @@ class OtpError(Exception):
 
 
 class OtpService:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, sender: SmsSender) -> None:
         self._settings = settings
+        self._sender = sender
         self._pending: dict[str, _Pending] = {}
 
     def _generate(self) -> str:
         digits = self._settings.otp_length
         return "".join(secrets.choice("0123456789") for _ in range(digits))
 
-    def _deliver(self, phone: str, code: str) -> None:
-        """Send the code. In demo mode this only logs; wire SMS here for prod."""
-        if self._settings.otp_demo_mode:
-            logger.info("otp_demo", phone=phone, code=code)
-            return
-        # e.g. Twilio / MSG91 call would go here. Until configured, log loudly.
-        logger.warning("otp_no_provider", phone=phone)
-
-    def request(self, phone: str, name: str | None) -> tuple[int, str | None]:
+    async def request(self, phone: str, name: str | None) -> tuple[int, str | None]:
         """Issue a code for ``phone``. Returns (ttl_seconds, debug_otp|None)."""
         code = self._generate()
         ttl = self._settings.otp_ttl_seconds
         self._pending[phone] = _Pending(
             code=code, expires_at=time.time() + ttl, name=name
         )
-        self._deliver(phone, code)
-        debug_otp = code if self._settings.otp_demo_mode else None
+        try:
+            await self._sender.send_otp(phone, code)
+        except Exception as exc:  # provider/network failure — surface, don't hang
+            logger.error("otp_send_failed", phone=phone, error=str(exc))
+            raise OtpError("Couldn't send the code right now. Please try again.") from exc
+        # Echo the code only when the demo sender is active.
+        debug_otp = code if self._sender.is_demo else None
         return ttl, debug_otp
 
     def verify(self, phone: str, code: str) -> str | None:

@@ -25,7 +25,10 @@ async def request_otp(
     payload: OtpRequest,
     otp: OtpService = Depends(get_otp_service),
 ) -> OtpRequestResult:
-    ttl, debug_otp = otp.request(payload.phone, payload.name)
+    try:
+        ttl, debug_otp = await otp.request(payload.phone, payload.name)
+    except OtpError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
     return OtpRequestResult(phone=payload.phone, expires_in=ttl, debug_otp=debug_otp)
 
 

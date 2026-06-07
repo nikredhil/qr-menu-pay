@@ -19,6 +19,7 @@ from app.services.menu_service import MenuService
 from app.services.order_service import OrderService
 from app.services.otp_service import OtpService
 from app.services.payment_service import PaymentService
+from app.services.sms import build_sms_sender
 from app.services.table_service import TableService
 
 logger = get_logger(__name__)
@@ -44,7 +45,7 @@ async def lifespan(app: FastAPI):
         app=settings.app_name,
         db_backend=settings.db_backend,
         payments="razorpay" if settings.razorpay_enabled else "demo",
-        otp="demo" if settings.otp_demo_mode else "live",
+        otp="demo" if settings.otp_demo_mode else settings.otp_provider,
     )
 
     backends = _build_backends()
@@ -53,7 +54,8 @@ async def lifespan(app: FastAPI):
     table_service = TableService(backends["tables"])
     order_service = OrderService(backends["orders"], menu_service, table_service)
     customer_service = CustomerService(backends["customers"])
-    otp_service = OtpService(settings)
+    sms_sender = build_sms_sender(settings)
+    otp_service = OtpService(settings, sms_sender)
     payment_service = PaymentService(settings, order_service)
 
     app.state.menu_service = menu_service

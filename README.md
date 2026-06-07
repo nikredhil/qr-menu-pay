@@ -20,13 +20,16 @@ Scan QR  →  Phone OTP  →  Menu & cart  →  Pay (UPI / card / cash)  →  Li
 | Capability | Out of the box | With your credentials |
 |---|---|---|
 | **QR → table menu** | ✅ Real QR codes are generated per table, encoding `/.../t/<table>` | — |
-| **Phone OTP** | ✅ Demo mode — the code is shown on screen so the flow is fully testable | Plug Twilio/MSG91 into `OtpService._deliver` and set `OTP_DEMO_MODE=false` to send real SMS |
+| **Phone OTP** | ✅ Demo mode — the code is shown on screen so the flow is fully testable | Set `OTP_DEMO_MODE=false` and add **Twilio** or **MSG91** credentials to send real SMS (both wired in `app/services/sms.py`) |
 | **UPI / card payment** | ✅ Built-in **demo gateway** completes the flow and records a paid order (no real money) | Add **Razorpay** keys → real Razorpay Checkout (UPI + cards + netbanking). Test keys work immediately; live keys after KYC take real money |
 | **Cash** | ✅ Order is placed and marked payable at the counter; staff confirm collection | — |
 
 > Moving real money requires a payment-gateway merchant account (KYC). That's
 > the one thing this repo can't fabricate — but the moment you paste Razorpay
 > test keys into `.env`, the exact same checkout runs against the real gateway.
+
+**Deploying?** See [DEPLOY.md](DEPLOY.md) for the full Render (backend) + Vercel
+(frontend) walkthrough, including the Razorpay webhook and real SMS setup.
 
 ## Run it locally
 
@@ -97,7 +100,7 @@ qr-menu-pay/
 │   ├── core/                   # config, security (JWT), logging, deps
 │   ├── db/repositories/        # base + in-memory + JSON-file backends
 │   ├── models/schemas/         # menu, table, auth, order, payment models
-│   ├── services/               # menu, table, otp, order, payment, customer
+│   ├── services/               # menu, table, otp, sms, order, payment, customer
 │   └── api/routers/            # health, auth, menu, tables, orders, payments
 ├── scripts/seed_data.py        # HSR Club menu + tables
 ├── data/                       # JSON store (gitignored)
