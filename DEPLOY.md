@@ -1,79 +1,121 @@
-# Deploying HSR Club Dine
+# Production deployment — HSR Club Dine
 
-Two pieces go live separately:
+A step-by-step runbook. Two pieces go live separately:
 
-- **Backend** (FastAPI) → **Render** (free tier works)
-- **Frontend** (Vite SPA) → **Vercel** (free tier works)
+- **Backend** (FastAPI) → **Render** (or any host; a `Dockerfile` is included)
+- **Frontend** (Vite SPA) → **Vercel** (or Netlify)
 
-You'll do this once from the dashboards; the configs in this repo
-(`render.yaml`, `frontend/vercel.json`) make it mostly click-through.
-
-> Prerequisite: push this repo to GitHub. From `qr-menu-pay/`:
-> ```bash
-> gh repo create hsr-club-dine --private --source=. --push   # or create on github.com and `git push`
-> ```
+The repo configs (`render.yaml`, `frontend/vercel.json`, `Dockerfile`) make this
+mostly click-through. The app also **refuses to boot in production with insecure
+config** (default `JWT_SECRET`/`ADMIN_PASSWORD`, or `CORS_ORIGINS='*'`), so you
+can't accidentally ship the dev defaults.
 
 ---
 
-## 1. Backend on Render
+## Step 0 — Prerequisites
 
-1. **Render Dashboard → New → Blueprint**, pick your `hsr-club-dine` repo. Render
-   reads [`render.yaml`](render.yaml) and proposes the `hsr-club-dine-api` web service.
-2. It will prompt for the secret env vars (everything marked `sync: false`). Set:
+**a. Run the tests** (sanity check before shipping):
+```bash
+cd qr-menu-pay
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements-dev.txt
+pytest                       # 29 tests should pass
+```
+
+**b. Generate the two secrets** you'll paste into the host:
+```bash
+python -c "import secrets; print('JWT_SECRET     =', secrets.token_hex(32))"
+python -c "import secrets; print('ADMIN_PASSWORD =', secrets.token_urlsafe(18))"
+```
+Keep these somewhere safe (a password manager). **Never** commit them or paste
+them into chat.
+
+**c. Push to GitHub** (from `qr-menu-pay/`):
+```bash
+gh repo create hsr-club-dine --private --source=. --push
+# or: create the repo on github.com, then `git remote add origin … && git push -u origin main`
+```
+
+---
+
+## Step 1 — Backend on Render
+
+1. **Render → New → Blueprint**, pick the `hsr-club-dine` repo. It reads
+   [`render.yaml`](render.yaml) and proposes the `hsr-club-dine-api` service.
+2. Set the secret env vars (Render prompts for everything marked `sync:false`):
+
    | Key | Value |
    |---|---|
-   | `ADMIN_PASSWORD` | a strong staff password |
-   | `RAZORPAY_KEY_ID` | `rzp_test_…` (test) or `rzp_live_…` (after KYC) |
+   | `JWT_SECRET` | the value generated in Step 0b (or let Render auto-generate) |
+   | `ADMIN_PASSWORD` | the value from Step 0b |
+   | `RAZORPAY_KEY_ID` | `rzp_test_…` first; `rzp_live_…` after KYC |
    | `RAZORPAY_KEY_SECRET` | the matching secret |
-   | `RAZORPAY_WEBHOOK_SECRET` | the secret you set in step 4 |
-   | *(SMS — optional)* | see §3 below |
-   `JWT_SECRET` is auto-generated; `CORS_ORIGINS` is set in the blueprint — update
-   it to your real frontend URL once you have it (step 2).
-3. **Create** → wait for the build. Your API is at `https://hsr-club-dine-api.onrender.com`
-   (your name may differ). Check `https://…/health` returns `{"status":"ok"}` and
-   `https://…/docs` loads.
-4. **Razorpay webhook** (once the API URL exists): Razorpay Dashboard → **Settings
-   → Webhooks → Add New Webhook**:
-   - URL: `https://hsr-club-dine-api.onrender.com/payments/razorpay/webhook`
-   - Secret: choose one, and set it as `RAZORPAY_WEBHOOK_SECRET` on Render
-   - Active events: `payment.captured`, `payment.failed`, `order.paid`
+   | `RAZORPAY_WEBHOOK_SECRET` | the secret you set in Step 3 |
 
-> **Data persistence:** the free plan's disk is ephemeral, so orders reset on
-> redeploy/sleep. The menu + tables auto-reseed on boot. For durable orders,
-> uncomment the `disk:` block in `render.yaml` (paid plan) and set `DATA_DIR` to
-> its `mountPath`.
+   `ENVIRONMENT=prod`, `DB_BACKEND=file`, and `CORS_ORIGINS` are already in the
+   blueprint — you'll finalize `CORS_ORIGINS` in Step 2 once you know the
+   frontend URL.
+3. **Create** and wait for the build. Confirm:
+   - `https://<api>.onrender.com/health` → `{"status":"ok"}`
+   - `https://<api>.onrender.com/docs` loads
+   - If you set insecure values by mistake, the service **fails to boot** with a
+     clear log line — fix the env var and redeploy.
+
+> **Data durability:** the free plan's disk is ephemeral — orders reset on
+> redeploy/sleep (menu + tables auto-reseed). For durable orders, uncomment the
+> `disk:` block in `render.yaml` (paid plan) and set `DATA_DIR` to its `mountPath`.
+> For multi-instance scaling later, move storage + rate-limits to a shared store
+> (Postgres/Redis); today it's single-instance by design.
 
 ---
 
-## 2. Frontend on Vercel
+## Step 2 — Frontend on Vercel
 
 1. **Vercel → Add New → Project**, import the same repo.
 2. **Root Directory → `frontend`**. Vercel auto-detects Vite and reads
-   [`frontend/vercel.json`](frontend/vercel.json) (which includes the SPA rewrite
-   so `/t/<table>` deep links work on scan/refresh).
-3. **Environment Variables**:
+   [`frontend/vercel.json`](frontend/vercel.json) (SPA rewrite so `/t/<table>`
+   deep links resolve on scan/refresh).
+3. **Environment variable:**
    | Key | Value |
    |---|---|
-   | `VITE_API_BASE` | `https://hsr-club-dine-api.onrender.com` (your Render URL) |
-4. **Deploy.** You'll get `https://hsr-club-dine.vercel.app` (or your custom domain,
+   | `VITE_API_BASE` | `https://<api>.onrender.com` (your Render URL) |
+4. **Deploy** → you get `https://hsr-club-dine.vercel.app` (or a custom domain,
    e.g. `dine.hsrclub.in`).
-5. Go back to Render and set `CORS_ORIGINS` to that exact frontend origin, then
-   redeploy the API.
+5. **Back on Render**, set `CORS_ORIGINS` to that exact origin (comma-separate if
+   several, no trailing slash), then redeploy the API.
 
 ---
 
-## 3. Real OTP SMS (optional)
+## Step 3 — Razorpay (real payments)
 
-By default OTP runs in **demo mode** (the code shows on screen). To send real SMS,
-on Render set `OTP_DEMO_MODE=false` and configure one provider:
+1. Razorpay Dashboard → **Settings → API Keys** → generate **Test** keys first
+   (no KYC needed); put them on Render (Step 1). Test a full order end-to-end with
+   [test instruments](https://razorpay.com/docs/payments/payments/test-card-details/)
+   (card `4111 1111 1111 1111`, or UPI `success@razorpay`).
+2. **Webhook** (once the API URL exists): **Settings → Webhooks → Add**:
+   - URL: `https://<api>.onrender.com/payments/razorpay/webhook`
+   - Secret: choose one → set it as `RAZORPAY_WEBHOOK_SECRET` on Render
+   - Active events: `payment.captured`, `payment.failed`, `order.paid`
+
+   This is the reliable source of truth — an order is marked paid server-to-server
+   even if the customer's browser closes mid-payment.
+3. **Go live:** complete Razorpay **KYC** (business + bank proof) → generate
+   **Live** keys (`rzp_live_…`) → replace the test keys on Render. Same code.
+
+---
+
+## Step 4 — Real OTP SMS
+
+Default is demo mode (code shown on screen). For production set
+`OTP_DEMO_MODE=false` on Render and configure one provider:
 
 **MSG91 (recommended for India):**
 ```
 OTP_PROVIDER=msg91
 MSG91_AUTH_KEY=…
-MSG91_TEMPLATE_ID=…        # a DLT-approved Flow template with one variable
-MSG91_SENDER_ID=…          # your 6-char DLT sender id
-MSG91_OTP_VAR=otp          # the template's variable name for the code
+MSG91_TEMPLATE_ID=…     # DLT-approved Flow template with one variable for the code
+MSG91_SENDER_ID=…       # your 6-char DLT sender id
+MSG91_OTP_VAR=otp       # the template's variable name
 ```
 
 **Twilio (global):**
@@ -81,28 +123,47 @@ MSG91_OTP_VAR=otp          # the template's variable name for the code
 OTP_PROVIDER=twilio
 TWILIO_ACCOUNT_SID=…
 TWILIO_AUTH_TOKEN=…
-TWILIO_FROM_NUMBER=+1…     # an SMS-capable Twilio number (E.164)
+TWILIO_FROM_NUMBER=+1…  # SMS-capable Twilio number (E.164)
 ```
-
-If credentials are missing, the app safely falls back to demo mode and logs a
-warning — it won't silently fail to send. India requires DLT registration for SMS
-templates/sender ids with both providers.
+Missing credentials → safe fallback to demo mode (logged warning), never a silent
+failure. India requires DLT registration with either provider.
 
 ---
 
-## 4. Print the table QR codes
+## Step 5 — Print the table QR codes
 
-Sign in at `https://<your-frontend>/admin` (the `ADMIN_PASSWORD`) → **Tables & QR**.
-Each QR now encodes `https://<your-frontend>/t/<table>`, so scanning from any phone
-opens that table's live menu. Download/print and place on the tables.
+Sign in at `https://<frontend>/admin` with `ADMIN_PASSWORD` → **Tables & QR**.
+Add your real tables; each QR encodes `https://<frontend>/t/<table>`. Download and
+print, place on the tables. Scanning from any phone opens that table's live menu.
 
 ---
 
-## Go-live checklist
+## Production checklist
 
-- [ ] `CORS_ORIGINS` on Render = your real frontend origin(s), no trailing slash
-- [ ] `ADMIN_PASSWORD` changed from the default
-- [ ] Razorpay **live** keys in place (after KYC) + webhook secret matching Render
+Security (the boot guard enforces the first three):
+- [x] `ENVIRONMENT=prod`
+- [x] `JWT_SECRET` = strong random (not the default)
+- [x] `ADMIN_PASSWORD` = strong (not the default)
+- [x] `CORS_ORIGINS` = your real frontend origin(s), no `*`, no trailing slash
+- [ ] Razorpay **live** keys + webhook secret matching Render
 - [ ] `OTP_DEMO_MODE=false` with a configured SMS provider
-- [ ] `/health` green, a full test order pays through end-to-end
-- [ ] (Durability) persistent disk enabled if you need orders to survive restarts
+- [ ] HTTPS everywhere (Render + Vercel give this automatically; HSTS is sent in prod)
+
+Built-in protections (already on): per-IP rate limits on OTP request/verify and
+admin login (429 + `Retry-After`); server-side price/total computation; one-time
+OTP with attempt cap + TTL; orders scoped to the owning phone; security headers.
+
+Operational:
+- [ ] `/health` green; a full test order pays through end-to-end
+- [ ] Persistent disk enabled if orders must survive restarts
+- [ ] Secrets stored only in the host dashboard (never in git/chat)
+
+---
+
+## Alternative: Docker
+
+A `Dockerfile` is included for any container host:
+```bash
+docker build -t hsr-club-dine-api .
+docker run -p 8000:8000 --env-file .env hsr-club-dine-api
+```

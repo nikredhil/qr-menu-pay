@@ -1,10 +1,13 @@
 """Customer phone-OTP sign-in and staff password sign-in."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+import secrets
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from app.core.config import Settings, get_settings
 from app.core.dependencies import get_customer_service, get_otp_service
+from app.core.rate_limit import enforce_limit
 from app.core.security import create_admin_token, create_customer_token
 from app.models.schemas.auth import (
     AdminLogin,
@@ -22,9 +25,11 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 @router.post("/otp/request", response_model=OtpRequestResult)
 async def request_otp(
+    request: Request,
     payload: OtpRequest,
     otp: OtpService = Depends(get_otp_service),
 ) -> OtpRequestResult:
+    enforce_limit(request, "otp_request_limiter", payload.phone)
     try:
         ttl, debug_otp = await otp.request(payload.phone, payload.name)
     except OtpError as exc:
@@ -34,11 +39,13 @@ async def request_otp(
 
 @router.post("/otp/verify", response_model=CustomerToken)
 async def verify_otp(
+    request: Request,
     payload: OtpVerify,
     settings: Settings = Depends(get_settings),
     otp: OtpService = Depends(get_otp_service),
     customers: CustomerService = Depends(get_customer_service),
 ) -> CustomerToken:
+    enforce_limit(request, "otp_verify_limiter", payload.phone)
     try:
         name = otp.verify(payload.phone, payload.code)
     except OtpError as exc:
@@ -50,11 +57,11 @@ async def verify_otp(
 
 @router.post("/admin/login", response_model=AdminToken)
 async def admin_login(
+    request: Request,
     payload: AdminLogin,
     settings: Settings = Depends(get_settings),
 ) -> AdminToken:
-    import secrets
-
+    enforce_limit(request, "admin_login_limiter", "admin")
     if not secrets.compare_digest(payload.password, settings.admin_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect staff password"

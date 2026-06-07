@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.routers import auth, health, menu, orders, payments, tables
 from app.core.config import get_settings
 from app.core.logging import configure_logging, get_logger
+from app.core.rate_limit import SlidingWindowLimiter
 from app.db.repositories import CONTAINERS
 from app.db.repositories.base import BaseRepository
 from app.db.repositories.file_store import JsonFileRepository
@@ -43,10 +44,23 @@ async def lifespan(app: FastAPI):
     logger.info(
         "startup",
         app=settings.app_name,
+        environment=settings.environment,
         db_backend=settings.db_backend,
         payments="razorpay" if settings.razorpay_enabled else "demo",
         otp="demo" if settings.otp_demo_mode else settings.otp_provider,
     )
+
+    # Fail fast on insecure config in production; warn on softer issues.
+    if settings.environment == "prod":
+        errors = settings.production_errors()
+        if errors:
+            for e in errors:
+                logger.error("insecure_config", problem=e)
+            raise RuntimeError(
+                "Refusing to start in production with insecure config: " + "; ".join(errors)
+            )
+        for w in settings.production_warnings():
+            logger.warning("config_warning", note=w)
 
     backends = _build_backends()
 
@@ -64,6 +78,17 @@ async def lifespan(app: FastAPI):
     app.state.customer_service = customer_service
     app.state.otp_service = otp_service
     app.state.payment_service = payment_service
+
+    # Rate limiters for sensitive endpoints (in-memory sliding windows).
+    app.state.otp_request_limiter = SlidingWindowLimiter(
+        settings.otp_request_rate_limit, settings.otp_request_window_seconds
+    )
+    app.state.otp_verify_limiter = SlidingWindowLimiter(
+        settings.otp_verify_rate_limit, settings.otp_verify_window_seconds
+    )
+    app.state.admin_login_limiter = SlidingWindowLimiter(
+        settings.admin_login_rate_limit, settings.admin_login_window_seconds
+    )
 
     yield
     logger.info("shutdown")
@@ -89,6 +114,23 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    @app.middleware("http")
+    async def security_headers(request, call_next):
+        """Conservative security headers on every response. HSTS only over HTTPS
+        (so it doesn't break local http) and only in production."""
+        response = await call_next(request)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        response.headers.setdefault(
+            "Permissions-Policy", "geolocation=(), microphone=(), camera=()"
+        )
+        if settings.environment == "prod":
+            response.headers.setdefault(
+                "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
+            )
+        return response
 
     app.include_router(health.router)
     app.include_router(auth.router)

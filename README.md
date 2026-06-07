@@ -120,5 +120,19 @@ qr-menu-pay/
 - Customers can only read/pay their **own** orders (scoped by phone in the JWT).
 - Staff endpoints require the admin token; OTP codes are one-time-use with an
   attempt cap and TTL.
-- Change `JWT_SECRET` and `ADMIN_PASSWORD` for any real deployment, and set a
-  CORS allowlist via `CORS_ORIGINS`.
+- **Rate limiting** (per client IP) on OTP request/verify and admin login —
+  returns 429 + `Retry-After`, blunting SMS-bombing and password brute-force.
+- **Security headers** on every response (`X-Content-Type-Options`,
+  `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`; HSTS in prod).
+- **Fail-fast prod guard:** with `ENVIRONMENT=prod`, the app refuses to boot on
+  insecure defaults (`JWT_SECRET`/`ADMIN_PASSWORD`) or `CORS_ORIGINS='*'`.
+
+## Tests
+
+```bash
+pip install -r requirements-dev.txt
+pytest        # 29 tests: flows, authz, rate limits, signature verify, config guard
+```
+
+The suite runs fully offline (in-memory store, demo gateway) — no network, no
+real keys, no data files touched.

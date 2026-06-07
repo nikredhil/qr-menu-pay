@@ -28,6 +28,17 @@ class Settings(BaseSettings):
     jwt_expire_minutes: int = 60 * 12
     admin_password: str = "hsrclub-admin"
 
+    # --- Rate limiting (per client IP + target, sliding window) ---
+    # OTP requests: blunt SMS-bombing a single number and broad spraying.
+    otp_request_rate_limit: int = 5
+    otp_request_window_seconds: int = 600
+    # OTP verify attempts: limit code guessing beyond the per-code attempt cap.
+    otp_verify_rate_limit: int = 10
+    otp_verify_window_seconds: int = 600
+    # Admin login: blunt password brute-forcing.
+    admin_login_rate_limit: int = 8
+    admin_login_window_seconds: int = 300
+
     # --- Phone OTP ---
     # In demo mode the code is logged and returned in the request response so the
     # flow is testable with no SMS provider. Set otp_demo_mode=false and configure
@@ -70,6 +81,30 @@ class Settings(BaseSettings):
     @property
     def razorpay_enabled(self) -> bool:
         return bool(self.razorpay_key_id and self.razorpay_key_secret)
+
+    # Defaults that are fine for local dev but must never run in production.
+    _INSECURE_JWT_SECRET = "dev-secret-change-me"
+    _INSECURE_ADMIN_PASSWORD = "hsrclub-admin"
+
+    def production_errors(self) -> list[str]:
+        """Critical misconfigurations that must block boot when ENVIRONMENT=prod."""
+        errors: list[str] = []
+        if self.jwt_secret == self._INSECURE_JWT_SECRET:
+            errors.append("JWT_SECRET is still the insecure default — set a strong random value.")
+        if self.admin_password == self._INSECURE_ADMIN_PASSWORD:
+            errors.append("ADMIN_PASSWORD is still the default — set a strong password.")
+        if self.cors_origins.strip() == "*":
+            errors.append("CORS_ORIGINS is '*' — set an explicit frontend allowlist.")
+        return errors
+
+    def production_warnings(self) -> list[str]:
+        """Non-fatal things worth flagging at boot in production."""
+        warnings: list[str] = []
+        if self.otp_demo_mode:
+            warnings.append("OTP_DEMO_MODE is on — codes are echoed to clients; wire a real SMS provider.")
+        if not self.razorpay_enabled:
+            warnings.append("Razorpay is not configured — online payments fall back to the demo gateway.")
+        return warnings
 
 
 @lru_cache
