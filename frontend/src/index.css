@@ -1,0 +1,30 @@
+@import "tailwindcss";
+
+/* HSR Club brand palette, derived from the club logo (orange / green / blue). */
+@theme {
+  --color-club-orange: #ed7d31;
+  --color-club-orange-dark: #d96b22;
+  --color-club-green: #4c9a2a;
+  --color-club-blue: #1f5fa8;
+  --color-club-cream: #fff8f1;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-club-cream);
+  -webkit-font-smoothing: antialiased;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+/* Hide number-input spinners for a cleaner OTP / quantity feel. */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
