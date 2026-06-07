@@ -1,16 +1,15 @@
 import { CLUB } from "../branding";
 
-// Compact logo mark approximating the HSR Club emblem (orange arc, green leaves).
+// The official HSR Club emblem (served from /public). Preserves the logo's
+// 137×93 aspect ratio; `size` sets the rendered height.
 export function Logo({ size = 40 }) {
   return (
-    <div
-      className="flex items-center justify-center rounded-full bg-white ring-2 ring-club-orange"
-      style={{ width: size, height: size }}
-    >
-      <span className="font-extrabold leading-none text-club-blue" style={{ fontSize: size * 0.32 }}>
-        HSR
-      </span>
-    </div>
+    <img
+      src="/hsr-club-logo.png"
+      alt="HSR Club"
+      style={{ height: size, width: "auto" }}
+      className="object-contain"
+    />
   );
 }
 
