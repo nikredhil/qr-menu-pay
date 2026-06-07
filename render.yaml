@@ -1,0 +1,56 @@
+# Render blueprint for the HSR Club Dine FastAPI backend.
+# Create the service: Render Dashboard → New → Blueprint → pick this repo.
+# Frontend deploys separately on Vercel/Netlify (see frontend/vercel.json).
+services:
+  - type: web
+    name: hsr-club-dine-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    # Seed the menu + tables on first boot if the data files are missing, then
+    # start the API. (The free plan's disk is ephemeral — see the disk note below
+    # to persist orders/menu across restarts.)
+    startCommand: >-
+      sh -c '[ -f data/menu_items.json ] || python -m scripts.seed_data;
+      uvicorn app.main:app --host 0.0.0.0 --port $PORT'
+    healthCheckPath: /health
+    envVars:
+      # Pin Python 3.12 — pydantic-core ships prebuilt wheels for it. (Render's
+      # newer default has no wheel and tries to compile it with Rust, which fails.)
+      - key: PYTHON_VERSION
+        value: 3.12.8
+      - key: ENVIRONMENT
+        value: prod
+      - key: DB_BACKEND
+        value: file
+      - key: DATA_DIR
+        value: ./data
+      # Lock CORS to your deployed frontend origin(s).
+      - key: CORS_ORIGINS
+        value: https://dine.hsrclub.in
+      # Auth secret for the customer/staff JWTs — generated once by Render.
+      - key: JWT_SECRET
+        generateValue: true
+      # Staff dashboard password — set the real value in the Render dashboard.
+      - key: ADMIN_PASSWORD
+        sync: false
+      # Phone OTP. Keep demo mode off in production once an SMS provider is wired.
+      - key: OTP_DEMO_MODE
+        value: "true"
+      # Razorpay — secrets, set in the Render dashboard (not committed here).
+      # Use test keys first, then live keys after KYC.
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: RAZORPAY_WEBHOOK_SECRET
+        sync: false
+      - key: CURRENCY
+        value: INR
+
+    # Persistent disk (paid plans only). Uncomment to keep orders/menu across
+    # restarts, and set DATA_DIR above to the mountPath (e.g. /var/data).
+    # disk:
+    #   name: hsr-club-dine-data
+    #   mountPath: /var/data
+    #   sizeGB: 1

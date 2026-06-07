@@ -2,9 +2,12 @@
 or cash. All customer-facing endpoints scope to the caller's own order."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Body, Depends, HTTPException, status
+import json
+
+from fastapi import APIRouter, Body, Depends, Header, HTTPException, Request, status
 
 from app.core.dependencies import get_order_service, get_payment_service
+from app.core.logging import get_logger
 from app.core.security import get_current_customer, require_admin
 from app.models.schemas.payment import (
     CashConfirm,
@@ -17,6 +20,7 @@ from app.services.order_service import OrderNotFoundError, OrderService
 from app.services.payment_service import PaymentError, PaymentService
 
 router = APIRouter(prefix="/payments", tags=["payments"])
+logger = get_logger(__name__)
 
 
 async def _customer_order(order_id: str, phone: str, orders: OrderService):
@@ -104,6 +108,39 @@ async def confirm_cash(
         payment_method="cash",
         payment_ref=updated.payment_ref,
     )
+
+
+@router.post("/razorpay/webhook")
+async def razorpay_webhook(
+    request: Request,
+    x_razorpay_signature: str = Header(default=""),
+    payments: PaymentService = Depends(get_payment_service),
+) -> dict:
+    """Razorpay → us, server-to-server. Configure in the Razorpay Dashboard
+    (Settings → Webhooks) with the same secret as RAZORPAY_WEBHOOK_SECRET and
+    subscribe to ``payment.captured`` / ``payment.failed`` / ``order.paid``.
+
+    This is the reliable source of truth: it marks an order paid even if the
+    customer's browser closed before the in-page confirmation ran. It's public
+    by design — authenticity comes from the HMAC signature over the raw body.
+    """
+    if not payments.webhook_configured:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Webhook secret not configured",
+        )
+    raw = await request.body()
+    if not payments.verify_webhook(raw, x_razorpay_signature):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Bad signature")
+    try:
+        event = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Bad payload")
+
+    result = await payments.handle_webhook_event(event)
+    logger.info("razorpay_webhook", type=event.get("event"), result=result)
+    # Always 200 once verified, so Razorpay doesn't retry a handled event.
+    return {"status": result}
 
 
 @router.post("/{order_id}/cash-collected", response_model=PaymentResult)

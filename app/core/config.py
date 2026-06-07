@@ -42,6 +42,11 @@ class Settings(BaseSettings):
     razorpay_key_id: str | None = None
     razorpay_key_secret: str | None = None
     currency: str = "INR"
+    # Secret for the Razorpay webhook (Dashboard → Settings → Webhooks). When set,
+    # the /payments/razorpay/webhook endpoint verifies and honours payment events
+    # so an order is still marked paid even if the customer's browser drops off
+    # before the in-page confirmation runs.
+    razorpay_webhook_secret: str | None = None
 
     @property
     def razorpay_enabled(self) -> bool:

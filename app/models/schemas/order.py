@@ -51,6 +51,7 @@ class Order(BaseModel):
     payment_method: Literal["razorpay", "cash"] | None = None
     payment_status: Literal["pending", "paid", "failed", "refunded"] = "pending"
     payment_ref: str | None = None  # razorpay_payment_id, or staff note for cash
+    razorpay_order_id: str | None = None  # set at intent time; lets webhooks map back
     created_at: str
     updated_at: str
 

@@ -82,6 +82,9 @@ class PaymentService:
             raise PaymentError("Could not reach the payment gateway") from exc
 
         rzp = resp.json()
+        # Remember the gateway order id on our order so an async webhook can map
+        # the payment back even if the customer's browser never confirms.
+        await self._orders.attach_gateway_order(order.id, rzp["id"])
         return PaymentIntent(
             provider="razorpay",
             razorpay_order_id=rzp["id"],
@@ -120,6 +123,48 @@ class PaymentService:
         return await self._orders.set_payment(
             order.id, method="razorpay", status="failed", ref="demo_failed"
         )
+
+    # ---- webhook (server-to-server, the reliable source of truth) ----
+
+    @property
+    def webhook_configured(self) -> bool:
+        return bool(self._settings.razorpay_webhook_secret)
+
+    def verify_webhook(self, raw_body: bytes, signature: str) -> bool:
+        """Verify Razorpay's ``X-Razorpay-Signature`` over the raw request body."""
+        secret = (self._settings.razorpay_webhook_secret or "").encode()
+        expected = hmac.new(secret, raw_body, hashlib.sha256).hexdigest()
+        return hmac.compare_digest(expected, signature or "")
+
+    async def handle_webhook_event(self, event: dict) -> str:
+        """Apply a verified webhook event. Returns a short status for logging."""
+        kind = event.get("event", "")
+        entity = (
+            event.get("payload", {}).get("payment", {}).get("entity", {})
+            or event.get("payload", {}).get("order", {}).get("entity", {})
+        )
+        rzp_order_id = entity.get("order_id") or entity.get("id")
+        if not rzp_order_id:
+            return "ignored:no-order"
+
+        order = await self._orders.find_by_gateway_order(rzp_order_id)
+        if order is None:
+            return "ignored:unknown-order"
+
+        if kind in ("payment.captured", "order.paid"):
+            if order.payment_status == "paid":
+                return "noop:already-paid"
+            payment_id = entity.get("id") if kind == "payment.captured" else order.payment_ref
+            await self._orders.set_payment(
+                order.id, method="razorpay", status="paid", ref=payment_id or "webhook"
+            )
+            return "applied:paid"
+        if kind == "payment.failed" and order.payment_status != "paid":
+            await self._orders.set_payment(
+                order.id, method="razorpay", status="failed", ref=entity.get("id")
+            )
+            return "applied:failed"
+        return f"ignored:{kind}"
 
     async def confirm_cash(self, order: Order) -> Order:
         """Place a cash order: payable at the counter, staff confirm collection."""

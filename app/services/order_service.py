@@ -110,6 +110,22 @@ class OrderService:
         docs = await self._repo.query(filters=filters, limit=1000)
         return [Order(**d) for d in docs]
 
+    async def attach_gateway_order(self, order_id: str, razorpay_order_id: str) -> Order:
+        """Record the Razorpay order id on our order so a webhook can map back."""
+        order = await self.get(order_id)
+        data = order.model_dump()
+        data["razorpay_order_id"] = razorpay_order_id
+        data["updated_at"] = _now()
+        saved = await self._repo.update(data)
+        return Order(**saved)
+
+    async def find_by_gateway_order(self, razorpay_order_id: str) -> Order | None:
+        """Reverse lookup used by the webhook (no index — fine at this scale)."""
+        docs = await self._repo.query(
+            filters={"razorpay_order_id": razorpay_order_id}, limit=1
+        )
+        return Order(**docs[0]) if docs else None
+
     async def set_status(self, order_id: str, status: str) -> Order:
         order = await self.get(order_id)
         data = order.model_dump()
