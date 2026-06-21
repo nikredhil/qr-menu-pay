@@ -6,6 +6,8 @@ import AdminLogin from "./pages/AdminLogin.jsx";
 import AdminMenu from "./pages/AdminMenu.jsx";
 import AdminTables from "./pages/AdminTables.jsx";
 import AdminOrders from "./pages/AdminOrders.jsx";
+import AdminDashboard from "./pages/AdminDashboard.jsx";
+import AdminFeedback from "./pages/AdminFeedback.jsx";
 import { getAdminToken } from "./auth";
 
 function RequireAdmin({ children }) {
@@ -21,7 +23,23 @@ export default function App() {
       <Route path="/order/:orderId" element={<OrderStatus />} />
 
       <Route path="/admin/login" element={<AdminLogin />} />
-      <Route path="/admin" element={<Navigate to="/admin/orders" replace />} />
+      <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
+      <Route
+        path="/admin/dashboard"
+        element={
+          <RequireAdmin>
+            <AdminDashboard />
+          </RequireAdmin>
+        }
+      />
+      <Route
+        path="/admin/feedback"
+        element={
+          <RequireAdmin>
+            <AdminFeedback />
+          </RequireAdmin>
+        }
+      />
       <Route
         path="/admin/orders"
         element={

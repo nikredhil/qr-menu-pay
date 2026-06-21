@@ -21,4 +21,7 @@ async def config(settings: Settings = Depends(get_settings)) -> dict:
         "currency": settings.currency,
         "payment_provider": "razorpay" if settings.razorpay_enabled else "demo",
         "otp_demo_mode": settings.otp_demo_mode,
+        "default_language": settings.default_language,
+        "languages": settings.languages,
+        "notifications_enabled": settings.order_notifications_enabled,
     }

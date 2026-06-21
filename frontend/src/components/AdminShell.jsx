@@ -3,9 +3,11 @@ import { clearAdmin } from "../auth";
 import { Logo } from "./Brand";
 
 const TABS = [
+  { to: "/admin/dashboard", label: "Dashboard" },
   { to: "/admin/orders", label: "Orders" },
   { to: "/admin/menu", label: "Menu" },
   { to: "/admin/tables", label: "Tables & QR" },
+  { to: "/admin/feedback", label: "Feedback" },
 ];
 
 export default function AdminShell({ children }) {

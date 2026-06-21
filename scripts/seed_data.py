@@ -71,6 +71,24 @@ TABLES: list[tuple[str, str, int]] = [
     ("Pool Deck 1", "Pool Deck", 4),
 ]
 
+# A few sample translations (Hindi / Kannada) so the language switcher is
+# demonstrable out of the box. Real menus would translate every item.
+TRANSLATIONS: dict[str, dict] = {
+    "Paneer Tikka": {"hi": {"name": "पनीर टिक्का"}, "kn": {"name": "ಪನೀರ್ ಟಿಕ್ಕಾ"}},
+    "Butter Chicken": {"hi": {"name": "बटर चिकन"}, "kn": {"name": "ಬಟರ್ ಚಿಕನ್"}},
+    "Masala Chaas": {"hi": {"name": "मसाला छाछ"}, "kn": {"name": "ಮಸಾಲಾ ಮಜ್ಜಿಗೆ"}},
+    "Gulab Jamun (2 pc)": {"hi": {"name": "गुलाब जामुन"}, "kn": {"name": "ಗುಲಾಬ್ ಜಾಮೂನ್"}},
+}
+
+# Sample food photos (royalty-free Unsplash) for a few dishes to show the
+# photo menu. Swap in your own URLs from the admin Menu screen.
+IMAGES: dict[str, str] = {
+    "Paneer Tikka": "https://images.unsplash.com/photo-1599487488170-d11ec9c172f0?w=400&q=70",
+    "Butter Chicken": "https://images.unsplash.com/photo-1603894584373-5ac82b2ae398?w=400&q=70",
+    "Veg Dum Biryani": "https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?w=400&q=70",
+    "Cold Coffee": "https://images.unsplash.com/photo-1461023058943-07fcbe16d735?w=400&q=70",
+}
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -89,6 +107,18 @@ async def main() -> None:
     menu_repo = JsonFileRepository(os.path.join(settings.data_dir, "menu_items.json"))
     table_repo = JsonFileRepository(os.path.join(settings.data_dir, "tables.json"))
 
+    outlet_repo = JsonFileRepository(os.path.join(settings.data_dir, "outlets.json"))
+    await outlet_repo.create(
+        {
+            "id": "default",
+            "name": settings.app_name,
+            "address": "",
+            "phone": "",
+            "active": True,
+            "created_at": _now(),
+        }
+    )
+
     for name, desc, price, category, veg in MENU:
         await menu_repo.create(
             {
@@ -99,7 +129,9 @@ async def main() -> None:
                 "category": category,
                 "veg": veg,
                 "available": True,
-                "image_url": None,
+                "image_url": IMAGES.get(name),
+                "translations": TRANSLATIONS.get(name, {}),
+                "outlet_id": "default",
                 "created_at": _now(),
             }
         )
@@ -113,6 +145,7 @@ async def main() -> None:
                 "area": area,
                 "seats": seats,
                 "active": True,
+                "outlet_id": "default",
                 "created_at": _now(),
             }
         )

@@ -25,9 +25,11 @@ class TableService:
     def __init__(self, repo: BaseRepository) -> None:
         self._repo = repo
 
-    async def list(self) -> list[Table]:
+    async def list(self, *, outlet_id: str | None = None) -> list[Table]:
         docs = await self._repo.query(limit=1000)
         tables = [Table(**d) for d in docs]
+        if outlet_id is not None:
+            tables = [t for t in tables if (t.outlet_id or "default") == outlet_id]
         tables.sort(key=lambda t: t.label)
         return tables
 
@@ -44,7 +46,9 @@ class TableService:
         while await self._repo.get(code) is not None:
             n += 1
             code = f"{base}-{n}"
-        table = Table(id=code, created_at=_now(), **payload.model_dump())
+        data = payload.model_dump()
+        data["outlet_id"] = data.get("outlet_id") or "default"
+        table = Table(id=code, created_at=_now(), **data)
         await self._repo.create(table.model_dump())
         return table
 

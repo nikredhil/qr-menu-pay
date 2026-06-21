@@ -25,10 +25,11 @@ async def get_table(
 
 @router.get("", response_model=TableList)
 async def list_tables(
+    outlet: str | None = None,
     _: str = Depends(require_admin),
     service: TableService = Depends(get_table_service),
 ) -> TableList:
-    return TableList(items=await service.list())
+    return TableList(items=await service.list(outlet_id=outlet))
 
 
 @router.post("", response_model=Table, status_code=status.HTTP_201_CREATED)

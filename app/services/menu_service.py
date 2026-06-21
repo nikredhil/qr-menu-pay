@@ -20,11 +20,15 @@ class MenuService:
     def __init__(self, repo: BaseRepository) -> None:
         self._repo = repo
 
-    async def list(self, *, only_available: bool = False) -> list[MenuItem]:
+    async def list(
+        self, *, only_available: bool = False, outlet_id: str | None = None
+    ) -> list[MenuItem]:
         docs = await self._repo.query(limit=1000)
         items = [MenuItem(**d) for d in docs]
         if only_available:
             items = [i for i in items if i.available]
+        if outlet_id is not None:
+            items = [i for i in items if (i.outlet_id or "default") == outlet_id]
         # Stable, diner-friendly ordering: by name within a category.
         items.sort(key=lambda i: (i.category, i.name.lower()))
         return items
@@ -40,7 +44,9 @@ class MenuService:
         return MenuItem(**doc) if doc is not None else None
 
     async def create(self, payload: MenuItemCreate) -> MenuItem:
-        item = MenuItem(id=str(uuid.uuid4()), created_at=_now(), **payload.model_dump())
+        data = payload.model_dump()
+        data["outlet_id"] = data.get("outlet_id") or "default"
+        item = MenuItem(id=str(uuid.uuid4()), created_at=_now(), **data)
         await self._repo.create(item.model_dump())
         return item
 

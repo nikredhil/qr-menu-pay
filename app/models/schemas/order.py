@@ -40,6 +40,7 @@ class Order(BaseModel):
     code: str                       # short human-friendly order number, e.g. "A23"
     table_id: str
     table_label: str
+    outlet_id: str | None = None    # which outlet the order belongs to
     phone: str
     customer_name: str | None = None
     lines: list[OrderLine]

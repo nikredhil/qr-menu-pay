@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { api, rupees, STATUS_META, PAY_META } from "../api";
 import { Header, Footer } from "../components/Brand";
-import { Badge, Card, Spinner, VegMark } from "../components/ui";
+import { Badge, Button, Card, Spinner, VegMark } from "../components/ui";
 
 // Live order receipt + kitchen status. Polls every 8s so diners see the
 // kitchen advance "placed → preparing → served" without refreshing.
@@ -114,6 +114,8 @@ export default function OrderStatus() {
           </div>
         </Card>
 
+        {paid && <FeedbackCard orderId={order.id} />}
+
         <Link
           to={`/t/${order.table_id}`}
           className="mt-4 block text-center text-sm font-medium text-club-orange"
@@ -157,6 +159,111 @@ function Row({ label, value, bold }) {
     <div className={`flex justify-between ${bold ? "text-base font-bold text-slate-800" : "text-slate-500"}`}>
       <span>{label}</span>
       <span>{value}</span>
+    </div>
+  );
+}
+
+// Post-payment feedback. Shows a star form once the order is paid; if the diner
+// already rated this order it shows a thank-you instead.
+function FeedbackCard({ orderId }) {
+  const [existing, setExisting] = useState(undefined); // undefined = loading
+  const [rating, setRating] = useState(0);
+  const [food, setFood] = useState(0);
+  const [service, setService] = useState(0);
+  const [comment, setComment] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    api
+      .myFeedback(orderId)
+      .then((fb) => active && setExisting(fb))
+      .catch(() => active && setExisting(null));
+    return () => {
+      active = false;
+    };
+  }, [orderId]);
+
+  async function submit() {
+    if (!rating) {
+      setError("Please tap a star rating first.");
+      return;
+    }
+    setError("");
+    setBusy(true);
+    try {
+      const fb = await api.submitFeedback({
+        order_id: orderId,
+        rating,
+        food_rating: food || null,
+        service_rating: service || null,
+        comment,
+      });
+      setExisting(fb);
+    } catch (err) {
+      setError(err.message.replace(/^\d+:\s*/, ""));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (existing === undefined) return null;
+  if (existing) {
+    return (
+      <Card className="mt-4 p-5 text-center">
+        <p className="text-2xl">🙏</p>
+        <p className="mt-1 font-semibold text-slate-700">Thanks for your feedback!</p>
+        <p className="mt-1 text-club-orange">{"★".repeat(existing.rating)}</p>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="mt-4 p-5">
+      <h2 className="text-center font-bold text-slate-800">How was your experience?</h2>
+      <div className="mt-3 flex justify-center">
+        <StarPicker value={rating} onChange={setRating} size="text-3xl" />
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-3 text-center text-sm">
+        <div>
+          <div className="mb-1 text-xs text-slate-500">Food</div>
+          <StarPicker value={food} onChange={setFood} />
+        </div>
+        <div>
+          <div className="mb-1 text-xs text-slate-500">Service</div>
+          <StarPicker value={service} onChange={setService} />
+        </div>
+      </div>
+      <textarea
+        value={comment}
+        onChange={(e) => setComment(e.target.value)}
+        rows={2}
+        placeholder="Anything you'd like to tell us? (optional)"
+        className="mt-4 w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm outline-none focus:border-club-orange"
+      />
+      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+      <Button className="mt-3 w-full" onClick={submit} disabled={busy}>
+        {busy ? <Spinner /> : "Submit feedback"}
+      </Button>
+    </Card>
+  );
+}
+
+function StarPicker({ value, onChange, size = "text-xl" }) {
+  return (
+    <div className={`inline-flex ${size}`}>
+      {[1, 2, 3, 4, 5].map((n) => (
+        <button
+          key={n}
+          type="button"
+          onClick={() => onChange(n)}
+          className={n <= value ? "text-club-orange" : "text-slate-300"}
+          aria-label={`${n} star${n > 1 ? "s" : ""}`}
+        >
+          ★
+        </button>
+      ))}
     </div>
   );
 }

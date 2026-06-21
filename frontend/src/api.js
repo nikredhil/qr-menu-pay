@@ -33,8 +33,12 @@ async function request(path, { method = "GET", body, auth = false } = {}) {
 export const api = {
   // --- public ---
   config: () => request("/config"),
-  menu: () => request("/menu").then((d) => d.items),
+  // Pass an outlet id to scope the menu to one branch (diners derive it from
+  // their table); omit it to list everything.
+  menu: (outlet) =>
+    request(`/menu${outlet ? `?outlet=${encodeURIComponent(outlet)}` : ""}`).then((d) => d.items),
   getTable: (id) => request(`/tables/${encodeURIComponent(id)}`),
+  outlets: () => request("/outlets").then((d) => d.items),
 
   // --- customer auth (OTP) ---
   requestOtp: (phone, name) =>
@@ -61,6 +65,11 @@ export const api = {
   payCash: (orderId) =>
     request("/payments/cash", { method: "POST", body: { order_id: orderId }, auth: "customer" }),
 
+  // --- feedback ---
+  submitFeedback: (body) =>
+    request("/feedback", { method: "POST", body, auth: "customer" }),
+  myFeedback: (orderId) => request(`/feedback/mine/${orderId}`, { auth: "customer" }),
+
   // --- admin auth ---
   adminLogin: (password) =>
     request("/auth/admin/login", { method: "POST", body: { password } }),
@@ -78,12 +87,35 @@ export const api = {
   deleteTable: (id) => request(`/tables/${encodeURIComponent(id)}`, { method: "DELETE", auth: "admin" }),
 
   // --- admin: orders ---
-  adminOrders: () => request("/orders", { auth: "admin" }).then((d) => d.items),
+  adminOrders: (status) =>
+    request(`/orders${status ? `?status=${encodeURIComponent(status)}` : ""}`, {
+      auth: "admin",
+    }).then((d) => d.items),
   setOrderStatus: (id, status) =>
     request(`/orders/${id}/status`, { method: "PATCH", body: { status }, auth: "admin" }),
   markCashCollected: (id) =>
     request(`/payments/${id}/cash-collected`, { method: "POST", auth: "admin" }),
+
+  // --- admin: analytics + feedback ---
+  stats: () => request("/stats", { auth: "admin" }),
+  adminFeedback: () => request("/feedback", { auth: "admin" }).then((d) => d.items),
+  feedbackSummary: () => request("/feedback/summary", { auth: "admin" }),
+
+  // --- admin: outlets ---
+  adminOutlets: () => request("/outlets").then((d) => d.items),
+  createOutlet: (body) => request("/outlets", { method: "POST", body, auth: "admin" }),
 };
+
+// Apply a diner's chosen language to a menu item using its translations map,
+// falling back to the default (English) fields when a language is missing.
+export function localizeItem(item, lang) {
+  if (!lang || lang === "en") return item;
+  const t = item.translations?.[lang];
+  if (!t) return item;
+  return { ...item, name: t.name || item.name, description: t.description || item.description };
+}
+
+export const LANGUAGE_NAMES = { en: "English", hi: "हिन्दी", kn: "ಕನ್ನಡ", ta: "தமிழ்", te: "తెలుగు" };
 
 // ---------- shared helpers ----------
 export const MENU_CATEGORIES = [

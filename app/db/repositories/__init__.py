@@ -7,4 +7,6 @@ CONTAINERS: tuple[tuple[str, str], ...] = (
     ("tables", "id"),
     ("orders", "id"),
     ("customers", "id"),
+    ("feedback", "id"),
+    ("outlets", "id"),
 )

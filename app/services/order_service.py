@@ -39,11 +39,20 @@ def _order_code() -> str:
 
 class OrderService:
     def __init__(
-        self, repo: BaseRepository, menu_service: MenuService, table_service: TableService
+        self,
+        repo: BaseRepository,
+        menu_service: MenuService,
+        table_service: TableService,
+        customer_service=None,
+        notification_service=None,
     ) -> None:
         self._repo = repo
         self._menu = menu_service
         self._tables = table_service
+        # Optional collaborators: loyalty + order notifications. Left as None in
+        # unit tests that exercise ordering in isolation.
+        self._customers = customer_service
+        self._notifications = notification_service
 
     async def create(self, payload: OrderCreate, phone: str, name: str | None) -> Order:
         try:
@@ -78,6 +87,7 @@ class OrderService:
             code=_order_code(),
             table_id=table.id,
             table_label=table.label,
+            outlet_id=table.outlet_id or "default",
             phone=phone,
             customer_name=name,
             lines=lines,
@@ -91,6 +101,13 @@ class OrderService:
             updated_at=now,
         )
         await self._repo.create(order.model_dump())
+        if self._notifications is not None:
+            await self._notifications.order_placed(
+                phone=order.phone,
+                code=order.code,
+                table_label=order.table_label,
+                total=order.total,
+            )
         return order
 
     async def get(self, order_id: str) -> Order:
@@ -105,10 +122,21 @@ class OrderService:
             raise OrderNotFoundError(order_id)
         return order
 
-    async def list(self, *, phone: str | None = None) -> list[Order]:
+    async def list(
+        self,
+        *,
+        phone: str | None = None,
+        outlet_id: str | None = None,
+        statuses: list[str] | None = None,
+    ) -> list[Order]:
         filters = {"phone": phone} if phone else None
         docs = await self._repo.query(filters=filters, limit=1000)
-        return [Order(**d) for d in docs]
+        orders = [Order(**d) for d in docs]
+        if outlet_id is not None:
+            orders = [o for o in orders if (o.outlet_id or "default") == outlet_id]
+        if statuses is not None:
+            orders = [o for o in orders if o.status in statuses]
+        return orders
 
     async def attach_gateway_order(self, order_id: str, razorpay_order_id: str) -> Order:
         """Record the Razorpay order id on our order so a webhook can map back."""
@@ -128,20 +156,32 @@ class OrderService:
 
     async def set_status(self, order_id: str, status: str) -> Order:
         order = await self.get(order_id)
+        was = order.status
         data = order.model_dump()
         data["status"] = status
         data["updated_at"] = _now()
         saved = await self._repo.update(data)
-        return Order(**saved)
+        updated = Order(**saved)
+        # Notify the diner when their order is served (on the transition only).
+        if status == "served" and was != "served" and self._notifications is not None:
+            await self._notifications.order_served(
+                phone=updated.phone, code=updated.code, table_label=updated.table_label
+            )
+        return updated
 
     async def set_payment(
         self, order_id: str, *, method: str, status: str, ref: str | None
     ) -> Order:
         order = await self.get(order_id)
+        was_paid = order.payment_status == "paid"
         data = order.model_dump()
         data["payment_method"] = method
         data["payment_status"] = status
         data["payment_ref"] = ref
         data["updated_at"] = _now()
         saved = await self._repo.update(data)
-        return Order(**saved)
+        updated = Order(**saved)
+        # Credit loyalty once, on the transition into paid.
+        if status == "paid" and not was_paid and self._customers is not None:
+            await self._customers.record_visit(updated.phone, updated.total)
+        return updated

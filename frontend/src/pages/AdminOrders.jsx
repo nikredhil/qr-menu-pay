@@ -1,18 +1,53 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, rupees, STATUS_META, PAY_META } from "../api";
 import AdminShell from "../components/AdminShell";
 import { Badge, Button, Card, Spinner, VegMark } from "../components/ui";
 
 const NEXT = { placed: "preparing", preparing: "served" };
 
+// A short two-tone "ding" via the Web Audio API — no asset to ship.
+function playChime() {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    const ctx = new Ctx();
+    [880, 1320].forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.frequency.value = freq;
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      const t = ctx.currentTime + i * 0.18;
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(0.3, t + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+      osc.start(t);
+      osc.stop(t + 0.18);
+    });
+  } catch {
+    /* audio not available — ignore */
+  }
+}
+
 export default function AdminOrders() {
   const [orders, setOrders] = useState(null);
   const [filter, setFilter] = useState("active"); // active | all
+  const [sound, setSound] = useState(true);
   const [error, setError] = useState("");
+  const seenIds = useRef(null); // ids seen on the previous poll
+  const soundRef = useRef(true);
+  soundRef.current = sound;
 
   async function load() {
     try {
-      setOrders(await api.adminOrders());
+      const next = await api.adminOrders();
+      // Detect genuinely new orders (after the first load) and chime once.
+      const ids = new Set(next.map((o) => o.id));
+      if (seenIds.current) {
+        const hasNew = [...ids].some((id) => !seenIds.current.has(id));
+        if (hasNew && soundRef.current) playChime();
+      }
+      seenIds.current = ids;
+      setOrders(next);
     } catch (err) {
       setError(err.message.replace(/^\d+:\s*/, ""));
     }
@@ -20,8 +55,9 @@ export default function AdminOrders() {
 
   useEffect(() => {
     load();
-    const id = setInterval(load, 10000); // refresh the board
+    const id = setInterval(load, 7000); // live kitchen board
     return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function advance(o) {
@@ -57,19 +93,37 @@ export default function AdminOrders() {
   return (
     <AdminShell>
       <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-lg font-bold text-slate-800">Orders</h1>
-        <div className="flex rounded-xl border border-slate-300 bg-white p-0.5 text-sm">
-          {["active", "all"].map((f) => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={`rounded-lg px-3 py-1 font-medium capitalize ${
-                filter === f ? "bg-club-orange text-white" : "text-slate-500"
-              }`}
-            >
-              {f}
-            </button>
-          ))}
+        <h1 className="flex items-center gap-2 text-lg font-bold text-slate-800">
+          Kitchen board
+          <span className="flex items-center gap-1 text-xs font-medium text-club-green">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-club-green" /> live
+          </span>
+        </h1>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setSound((s) => !s)}
+            title="Toggle new-order sound"
+            className={`rounded-xl border px-3 py-1 text-sm font-medium ${
+              sound
+                ? "border-club-orange bg-club-cream text-club-orange"
+                : "border-slate-300 bg-white text-slate-400"
+            }`}
+          >
+            {sound ? "🔔 Sound on" : "🔕 Sound off"}
+          </button>
+          <div className="flex rounded-xl border border-slate-300 bg-white p-0.5 text-sm">
+            {["active", "all"].map((f) => (
+              <button
+                key={f}
+                onClick={() => setFilter(f)}
+                className={`rounded-lg px-3 py-1 font-medium capitalize ${
+                  filter === f ? "bg-club-orange text-white" : "text-slate-500"
+                }`}
+              >
+                {f}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 

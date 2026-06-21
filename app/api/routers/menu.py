@@ -20,10 +20,13 @@ router = APIRouter(prefix="/menu", tags=["menu"])
 @router.get("", response_model=MenuList)
 async def list_menu(
     all_items: bool = False,
+    outlet: str | None = None,
     service: MenuService = Depends(get_menu_service),
 ) -> MenuList:
-    """List the menu. Diners see available items only; staff pass all=true."""
-    items = await service.list(only_available=not all_items)
+    """List the menu. Diners see available items only; staff pass all=true.
+    Pass ``outlet`` to scope to a single branch (diners derive it from their
+    table; omit it and all outlets' items are returned)."""
+    items = await service.list(only_available=not all_items, outlet_id=outlet)
     return MenuList(items=items, categories=CATEGORIES)
 
 

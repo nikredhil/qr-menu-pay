@@ -7,7 +7,17 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routers import auth, health, menu, orders, payments, tables
+from app.api.routers import (
+    auth,
+    feedback,
+    health,
+    menu,
+    orders,
+    outlets,
+    payments,
+    stats,
+    tables,
+)
 from app.core.config import get_settings
 from app.core.logging import configure_logging, get_logger
 from app.core.rate_limit import SlidingWindowLimiter
@@ -15,10 +25,14 @@ from app.db.repositories import CONTAINERS
 from app.db.repositories.base import BaseRepository
 from app.db.repositories.file_store import JsonFileRepository
 from app.db.repositories.memory import InMemoryRepository
+from app.services.analytics_service import AnalyticsService
 from app.services.customer_service import CustomerService
+from app.services.feedback_service import FeedbackService
 from app.services.menu_service import MenuService
+from app.services.notification_service import NotificationService
 from app.services.order_service import OrderService
 from app.services.otp_service import OtpService
+from app.services.outlet_service import OutletService
 from app.services.payment_service import PaymentService
 from app.services.sms import build_sms_sender
 from app.services.table_service import TableService
@@ -66,8 +80,21 @@ async def lifespan(app: FastAPI):
 
     menu_service = MenuService(backends["menu_items"])
     table_service = TableService(backends["tables"])
-    order_service = OrderService(backends["orders"], menu_service, table_service)
     customer_service = CustomerService(backends["customers"])
+    notification_service = NotificationService(settings)
+    # OrderService fans out loyalty (customers) + order notifications as side
+    # effects, so it's built after those collaborators.
+    order_service = OrderService(
+        backends["orders"],
+        menu_service,
+        table_service,
+        customer_service=customer_service,
+        notification_service=notification_service,
+    )
+    feedback_service = FeedbackService(backends["feedback"])
+    outlet_service = OutletService(backends["outlets"], settings.app_name)
+    await outlet_service.ensure_default()
+    analytics_service = AnalyticsService(order_service, feedback_service, customer_service)
     sms_sender = build_sms_sender(settings)
     otp_service = OtpService(settings, sms_sender)
     payment_service = PaymentService(settings, order_service)
@@ -76,6 +103,10 @@ async def lifespan(app: FastAPI):
     app.state.table_service = table_service
     app.state.order_service = order_service
     app.state.customer_service = customer_service
+    app.state.notification_service = notification_service
+    app.state.feedback_service = feedback_service
+    app.state.outlet_service = outlet_service
+    app.state.analytics_service = analytics_service
     app.state.otp_service = otp_service
     app.state.payment_service = payment_service
 
@@ -136,8 +167,11 @@ def create_app() -> FastAPI:
     app.include_router(auth.router)
     app.include_router(menu.router)
     app.include_router(tables.router)
+    app.include_router(outlets.router)
     app.include_router(orders.router)
     app.include_router(payments.router)
+    app.include_router(feedback.router)
+    app.include_router(stats.router)
     return app
 
 

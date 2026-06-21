@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { api, rupees } from "../api";
+import { api, rupees, localizeItem, LANGUAGE_NAMES } from "../api";
 import { Header, Footer } from "../components/Brand";
 import { Button, Card, Spinner, VegMark } from "../components/ui";
 import Checkout from "../components/Checkout";
@@ -13,6 +13,8 @@ export default function TableMenu() {
   const [table, setTable] = useState(null);
   const [menu, setMenu] = useState([]);
   const [provider, setProvider] = useState("demo");
+  const [languages, setLanguages] = useState(["en"]);
+  const [lang, setLang] = useState("en");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [cart, setCart] = useState({}); // { itemId: qty }
@@ -21,17 +23,20 @@ export default function TableMenu() {
   const [notes, setNotes] = useState("");
   const [checkout, setCheckout] = useState(false);
 
-  // Load table + menu + config.
+  // Load table + config, then the menu scoped to that table's outlet.
   useEffect(() => {
     let active = true;
     (async () => {
       setLoading(true);
       try {
-        const [t, m, cfg] = await Promise.all([api.getTable(tableId), api.menu(), api.config()]);
+        const [t, cfg] = await Promise.all([api.getTable(tableId), api.config()]);
         if (!active) return;
         setTable(t);
-        setMenu(m);
         setProvider(cfg.payment_provider);
+        setLanguages(cfg.languages?.length ? cfg.languages : ["en"]);
+        setLang(cfg.default_language || "en");
+        const m = await api.menu(t.outlet_id || undefined);
+        if (active) setMenu(m);
       } catch (err) {
         if (active) setError(err.message.replace(/^\d+:\s*/, ""));
       } finally {
@@ -59,15 +64,16 @@ export default function TableMenu() {
   const byId = useMemo(() => Object.fromEntries(menu.map((m) => [m.id, m])), [menu]);
 
   const categories = useMemo(() => {
+    const q = query.toLowerCase();
     const filtered = menu.filter((m) => {
       if (vegOnly && !m.veg) return false;
-      if (query && !m.name.toLowerCase().includes(query.toLowerCase())) return false;
+      if (q && !localizeItem(m, lang).name.toLowerCase().includes(q)) return false;
       return true;
     });
     const groups = {};
     for (const item of filtered) (groups[item.category] ||= []).push(item);
     return groups;
-  }, [menu, vegOnly, query]);
+  }, [menu, vegOnly, query, lang]);
 
   const lines = useMemo(
     () =>
@@ -137,6 +143,20 @@ export default function TableMenu() {
             >
               Veg only
             </button>
+            {languages.length > 1 && (
+              <select
+                value={lang}
+                onChange={(e) => setLang(e.target.value)}
+                aria-label="Menu language"
+                className="shrink-0 rounded-xl border border-slate-300 bg-white px-2 py-2 text-xs font-semibold text-slate-600 outline-none focus:border-club-orange"
+              >
+                {languages.map((code) => (
+                  <option key={code} value={code}>
+                    {LANGUAGE_NAMES[code] || code.toUpperCase()}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
         </div>
 
@@ -148,21 +168,35 @@ export default function TableMenu() {
           <section key={cat} className="mt-5">
             <h2 className="mb-2 text-sm font-bold uppercase tracking-wide text-club-blue">{cat}</h2>
             <div className="space-y-2">
-              {items.map((item) => (
-                <Card key={item.id} className="flex items-center justify-between gap-3 p-3">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <VegMark veg={item.veg} />
-                      <span className="truncate font-semibold text-slate-800">{item.name}</span>
-                    </div>
-                    {item.description && (
-                      <p className="mt-0.5 line-clamp-2 text-xs text-slate-500">{item.description}</p>
+              {items.map((item) => {
+                const loc = localizeItem(item, lang);
+                return (
+                  <Card key={item.id} className="flex items-center justify-between gap-3 p-3">
+                    {item.image_url && (
+                      <img
+                        src={item.image_url}
+                        alt={loc.name}
+                        loading="lazy"
+                        className="h-16 w-16 shrink-0 rounded-xl object-cover"
+                        onError={(e) => {
+                          e.currentTarget.style.display = "none";
+                        }}
+                      />
                     )}
-                    <p className="mt-1 text-sm font-semibold text-slate-700">{rupees(item.price)}</p>
-                  </div>
-                  <QtyControl qty={cart[item.id] || 0} onChange={(q) => setQty(item.id, q)} />
-                </Card>
-              ))}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <VegMark veg={item.veg} />
+                        <span className="truncate font-semibold text-slate-800">{loc.name}</span>
+                      </div>
+                      {loc.description && (
+                        <p className="mt-0.5 line-clamp-2 text-xs text-slate-500">{loc.description}</p>
+                      )}
+                      <p className="mt-1 text-sm font-semibold text-slate-700">{rupees(item.price)}</p>
+                    </div>
+                    <QtyControl qty={cart[item.id] || 0} onChange={(q) => setQty(item.id, q)} />
+                  </Card>
+                );
+              })}
             </div>
           </section>
         ))}

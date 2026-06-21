@@ -24,6 +24,10 @@ class MenuItem(BaseModel):
     veg: bool = True
     available: bool = True
     image_url: str | None = None
+    # Per-language overrides, e.g. {"hi": {"name": "...", "description": "..."}}.
+    # Diners switch language client-side; missing languages fall back to English.
+    translations: dict[str, dict] = {}
+    outlet_id: str | None = None    # which outlet this item belongs to
     created_at: str | None = None
 
 
@@ -35,6 +39,8 @@ class MenuItemCreate(BaseModel):
     veg: bool = True
     available: bool = True
     image_url: str | None = None
+    translations: dict[str, dict] = {}
+    outlet_id: str | None = None
 
 
 class MenuItemUpdate(BaseModel):
@@ -45,6 +51,8 @@ class MenuItemUpdate(BaseModel):
     veg: bool | None = None
     available: bool | None = None
     image_url: str | None = None
+    translations: dict[str, dict] | None = None
+    outlet_id: str | None = None
 
 
 class MenuList(BaseModel):

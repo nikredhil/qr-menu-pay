@@ -28,6 +28,31 @@ Scan QR  →  Phone OTP  →  Menu & cart  →  Pay (UPI / card / cash)  →  Li
 > the one thing this repo can't fabricate — but the moment you paste Razorpay
 > test keys into `.env`, the exact same checkout runs against the real gateway.
 
+> **Production is a real product, not a demo.** When `ENVIRONMENT=prod` the app
+> *refuses to boot* with demo OTP, an unconfigured (demo) payment gateway, the
+> default JWT secret / admin password, or wildcard CORS. The demo OTP and demo
+> gateway exist only to make local dev runnable with zero setup.
+
+## Full feature set
+
+A complete digital-menu ordering product (in the spirit of mydigimenu):
+
+**For diners**
+- 📱 **QR → table menu** with food **photos**, veg/non-veg marks, live search & category sections
+- 🌐 **Multi-language menu** — switch language on the fly (English / Hindi / Kannada out of the box; configurable)
+- 🔐 **Phone-OTP sign-in**, cart, server-computed totals + GST
+- 💳 **Pay by UPI / card (Razorpay)** or **cash at the counter**
+- 🔔 **SMS / WhatsApp updates** when the order is placed and served
+- ⭐ **Post-payment feedback** — rate food & service, leave a comment
+
+**For staff**
+- 🍳 **Live kitchen (KOT) board** — new orders appear with a sound alert; advance Placed → Preparing → Served
+- 📊 **Sales analytics dashboard** — today's revenue, order counts, top sellers, payment mix, repeat diners, avg rating
+- 🗒️ **Menu management** with photos & availability toggles · **table QR** printing
+- 💬 **Guest feedback** board
+- 🏢 **Multi-outlet** — one backend can serve several branches; each table/menu/order is outlet-scoped
+- 🎁 **Loyalty** — visits, spend, and points tracked per diner automatically
+
 **Deploying?** See [DEPLOY.md](DEPLOY.md) for the full Render (backend) + Vercel
 (frontend) walkthrough, including the Razorpay webhook and real SMS setup.
 

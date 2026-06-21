@@ -61,10 +61,16 @@ async def get_my_order(
 
 @router.get("", response_model=OrderList)
 async def all_orders(
+    outlet: str | None = None,
+    status: str | None = None,
     _: str = Depends(require_admin),
     service: OrderService = Depends(get_order_service),
 ) -> OrderList:
-    return OrderList(items=await service.list())
+    """Staff order board. Optionally scope by ``outlet`` and filter by one or
+    more comma-separated ``status`` values (e.g. ``placed,preparing``) — the
+    live kitchen board polls this to show only active tickets."""
+    statuses = [s.strip() for s in status.split(",") if s.strip()] if status else None
+    return OrderList(items=await service.list(outlet_id=outlet, statuses=statuses))
 
 
 @router.patch("/{order_id}/status", response_model=Order)

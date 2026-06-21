@@ -78,6 +78,24 @@ class Settings(BaseSettings):
     # before the in-page confirmation runs.
     razorpay_webhook_secret: str | None = None
 
+    # --- Order notifications (SMS / WhatsApp) ---
+    # Best-effort messages to the customer when an order is placed and when it's
+    # served. Reuses the same SMS provider as OTP; WhatsApp uses Twilio's
+    # WhatsApp channel when a whatsapp_from number is set. Never blocks an order.
+    order_notifications_enabled: bool = False
+    notify_channel: Literal["sms", "whatsapp"] = "sms"
+    twilio_whatsapp_from: str | None = None  # e.g. "whatsapp:+14155238886"
+
+    # --- Menu languages (multi-language menu) ---
+    # The primary language plus any additional languages diners can switch to.
+    # Items carry per-language overrides in their ``translations`` map.
+    default_language: str = "en"
+    supported_languages: str = "en,hi,kn"  # comma-separated codes
+
+    @property
+    def languages(self) -> list[str]:
+        return [c.strip() for c in self.supported_languages.split(",") if c.strip()]
+
     @property
     def razorpay_enabled(self) -> bool:
         return bool(self.razorpay_key_id and self.razorpay_key_secret)
@@ -87,7 +105,12 @@ class Settings(BaseSettings):
     _INSECURE_ADMIN_PASSWORD = "hsrclub-admin"
 
     def production_errors(self) -> list[str]:
-        """Critical misconfigurations that must block boot when ENVIRONMENT=prod."""
+        """Critical misconfigurations that must block boot when ENVIRONMENT=prod.
+
+        In production this is a *real* product: no echoed OTP codes and no fake
+        payment gateway. Demo OTP and an unconfigured Razorpay are therefore
+        boot-blocking, not just warnings.
+        """
         errors: list[str] = []
         if self.jwt_secret == self._INSECURE_JWT_SECRET:
             errors.append("JWT_SECRET is still the insecure default — set a strong random value.")
@@ -95,15 +118,30 @@ class Settings(BaseSettings):
             errors.append("ADMIN_PASSWORD is still the default — set a strong password.")
         if self.cors_origins.strip() == "*":
             errors.append("CORS_ORIGINS is '*' — set an explicit frontend allowlist.")
+        if self.otp_demo_mode:
+            errors.append(
+                "OTP_DEMO_MODE is on — codes would be echoed to clients. "
+                "Set OTP_DEMO_MODE=false and configure a real SMS provider (Twilio/MSG91)."
+            )
+        if not self.razorpay_enabled:
+            errors.append(
+                "Razorpay is not configured — the demo gateway must never run in production. "
+                "Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET."
+            )
         return errors
 
     def production_warnings(self) -> list[str]:
         """Non-fatal things worth flagging at boot in production."""
         warnings: list[str] = []
-        if self.otp_demo_mode:
-            warnings.append("OTP_DEMO_MODE is on — codes are echoed to clients; wire a real SMS provider.")
-        if not self.razorpay_enabled:
-            warnings.append("Razorpay is not configured — online payments fall back to the demo gateway.")
+        if not self.razorpay_webhook_secret:
+            warnings.append(
+                "RAZORPAY_WEBHOOK_SECRET is unset — orders rely on in-page confirmation only; "
+                "set it so a dropped browser still settles the order via webhook."
+            )
+        if not self.order_notifications_enabled:
+            warnings.append(
+                "ORDER_NOTIFICATIONS_ENABLED is off — customers won't get SMS/WhatsApp order updates."
+            )
         return warnings
 
 

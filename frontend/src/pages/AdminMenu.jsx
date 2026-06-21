@@ -3,7 +3,15 @@ import { api, rupees, MENU_CATEGORIES } from "../api";
 import AdminShell from "../components/AdminShell";
 import { Button, Card, Input, Spinner, VegMark } from "../components/ui";
 
-const BLANK = { name: "", description: "", price: "", category: MENU_CATEGORIES[0], veg: true, available: true };
+const BLANK = {
+  name: "",
+  description: "",
+  price: "",
+  category: MENU_CATEGORIES[0],
+  veg: true,
+  available: true,
+  image_url: "",
+};
 
 export default function AdminMenu() {
   const [items, setItems] = useState(null);
@@ -45,6 +53,7 @@ export default function AdminMenu() {
       category: form.category,
       veg: form.veg,
       available: form.available,
+      image_url: form.image_url?.trim() || null,
     };
     try {
       if (editing) await api.updateMenuItem(editing, payload);
@@ -107,6 +116,12 @@ export default function AdminMenu() {
             placeholder="Short description"
             value={form.description}
             onChange={(e) => setForm({ ...form, description: e.target.value })}
+          />
+          <Input
+            className="sm:col-span-2"
+            placeholder="Photo URL (optional) — https://…"
+            value={form.image_url || ""}
+            onChange={(e) => setForm({ ...form, image_url: e.target.value })}
           />
           <select
             value={form.category}
