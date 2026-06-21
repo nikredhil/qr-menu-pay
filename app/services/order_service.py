@@ -2,6 +2,7 @@
 the live menu so the client can never dictate what something costs."""
 from __future__ import annotations
 
+import asyncio
 import secrets
 import uuid
 from datetime import datetime, timezone
@@ -53,6 +54,17 @@ class OrderService:
         # unit tests that exercise ordering in isolation.
         self._customers = customer_service
         self._notifications = notification_service
+        # Fire-and-forget notification tasks, kept referenced so the event loop
+        # doesn't garbage-collect them mid-flight.
+        self._bg_tasks: set[asyncio.Task] = set()
+
+    def _fire(self, coro) -> None:
+        """Run a best-effort side effect (an SMS send) off the request's path so
+        a slow provider can't add latency to the order response during a rush.
+        The coroutine already swallows its own errors."""
+        task = asyncio.create_task(coro)
+        self._bg_tasks.add(task)
+        task.add_done_callback(self._bg_tasks.discard)
 
     async def create(self, payload: OrderCreate, phone: str, name: str | None) -> Order:
         try:
@@ -102,11 +114,13 @@ class OrderService:
         )
         await self._repo.create(order.model_dump())
         if self._notifications is not None:
-            await self._notifications.order_placed(
-                phone=order.phone,
-                code=order.code,
-                table_label=order.table_label,
-                total=order.total,
+            self._fire(
+                self._notifications.order_placed(
+                    phone=order.phone,
+                    code=order.code,
+                    table_label=order.table_label,
+                    total=order.total,
+                )
             )
         return order
 
@@ -164,8 +178,10 @@ class OrderService:
         updated = Order(**saved)
         # Notify the diner when their order is served (on the transition only).
         if status == "served" and was != "served" and self._notifications is not None:
-            await self._notifications.order_served(
-                phone=updated.phone, code=updated.code, table_label=updated.table_label
+            self._fire(
+                self._notifications.order_served(
+                    phone=updated.phone, code=updated.code, table_label=updated.table_label
+                )
             )
         return updated
 

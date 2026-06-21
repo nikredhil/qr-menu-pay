@@ -40,6 +40,17 @@ gh repo create hsr-club-dine --private --source=. --push
 
 ## Step 1 — Backend on Render
 
+**1a. Provision a free Postgres (Neon).** Orders are written concurrently during
+a rush, so the app uses Postgres (`DB_BACKEND=sql`) rather than the single-writer
+JSON file. [Neon](https://neon.tech)'s free tier is durable and needs no card:
+
+   1. Create a project → copy the **Pooled** connection string (the host
+      contains `-pooler`). Either `postgres://…` or `postgresql://…` is fine —
+      it's normalised to the async driver automatically.
+   2. You'll paste it as `DATABASE_URL` below. The tables and indexes are created
+      automatically on first boot; `scripts/migrate_json_to_sql.py` (run from the
+      start command) loads the seeded menu/tables in.
+
 1. **Render → New → Blueprint**, pick the `hsr-club-dine` repo. It reads
    [`render.yaml`](render.yaml) and proposes the `hsr-club-dine-api` service.
 2. Set the secret env vars (Render prompts for everything marked `sync:false`):
@@ -51,8 +62,9 @@ gh repo create hsr-club-dine --private --source=. --push
    | `RAZORPAY_KEY_ID` | `rzp_test_…` first; `rzp_live_…` after KYC |
    | `RAZORPAY_KEY_SECRET` | the matching secret |
    | `RAZORPAY_WEBHOOK_SECRET` | the secret you set in Step 3 |
+   | `DATABASE_URL` | the Neon **pooled** connection string (Step 1a) |
 
-   `ENVIRONMENT=prod`, `DB_BACKEND=file`, and `CORS_ORIGINS` are already in the
+   `ENVIRONMENT=prod`, `DB_BACKEND=sql`, and `CORS_ORIGINS` are already in the
    blueprint — you'll finalize `CORS_ORIGINS` in Step 2 once you know the
    frontend URL.
 3. **Create** and wait for the build. Confirm:
@@ -61,11 +73,14 @@ gh repo create hsr-club-dine --private --source=. --push
    - If you set insecure values by mistake, the service **fails to boot** with a
      clear log line — fix the env var and redeploy.
 
-> **Data durability:** the free plan's disk is ephemeral — orders reset on
-> redeploy/sleep (menu + tables auto-reseed). For durable orders, uncomment the
-> `disk:` block in `render.yaml` (paid plan) and set `DATA_DIR` to its `mountPath`.
-> For multi-instance scaling later, move storage + rate-limits to a shared store
-> (Postgres/Redis); today it's single-instance by design.
+> **Data durability & scale:** with `DB_BACKEND=sql`, orders live in Postgres
+> and survive Render redeploys/sleep — no persistent disk needed. A single
+> Render worker on Neon comfortably absorbs a busy single-venue rush (hundreds of
+> concurrent orders), because each write is an independent indexed upsert rather
+> than a whole-file rewrite under one lock. To scale to *multiple* API instances
+> later, also move the in-memory rate-limit and OTP state (`app/core/rate_limit.py`,
+> `app/services/otp_service.py`) to a shared store like Redis — not needed for one
+> venue on one worker.
 
 ---
 
@@ -155,7 +170,7 @@ OTP with attempt cap + TTL; orders scoped to the owning phone; security headers.
 
 Operational:
 - [ ] `/health` green; a full test order pays through end-to-end
-- [ ] Persistent disk enabled if orders must survive restarts
+- [ ] `DATABASE_URL` set to the Neon **pooled** string; orders persist across a redeploy
 - [ ] Secrets stored only in the host dashboard (never in git/chat)
 
 ---

@@ -7,11 +7,12 @@ services:
     runtime: python
     plan: free
     buildCommand: pip install -r requirements.txt
-    # Seed the menu + tables on first boot if the data files are missing, then
-    # start the API. (The free plan's disk is ephemeral — see the disk note below
-    # to persist orders/menu across restarts.)
+    # Seed the menu + tables into local JSON if missing, push them into Postgres
+    # (idempotent upsert), then start the API. With DB_BACKEND=sql, orders live
+    # in Postgres and survive restarts even on the free plan's ephemeral disk.
     startCommand: >-
       sh -c '[ -f data/menu_items.json ] || python -m scripts.seed_data;
+      python -m scripts.migrate_json_to_sql;
       uvicorn app.main:app --host 0.0.0.0 --port $PORT'
     healthCheckPath: /health
     envVars:
@@ -21,8 +22,14 @@ services:
         value: 3.12.8
       - key: ENVIRONMENT
         value: prod
+      # Postgres backend — handles concurrent order writes (a busy-rush venue).
+      # "file" is single-writer and only fits a low order rate.
       - key: DB_BACKEND
-        value: file
+        value: sql
+      # Neon (or any) Postgres URL. Use Neon's *pooled* connection string. Set
+      # the real value in the Render dashboard — never commit it.
+      - key: DATABASE_URL
+        sync: false
       - key: DATA_DIR
         value: ./data
       # Lock CORS to your deployed frontend origin(s).
@@ -48,8 +55,8 @@ services:
       - key: CURRENCY
         value: INR
 
-    # Persistent disk (paid plans only). Uncomment to keep orders/menu across
-    # restarts, and set DATA_DIR above to the mountPath (e.g. /var/data).
+    # With DB_BACKEND=sql you don't need a persistent disk — Postgres holds the
+    # durable data. (This block is only relevant if you fall back to file mode.)
     # disk:
     #   name: hsr-club-dine-data
     #   mountPath: /var/data

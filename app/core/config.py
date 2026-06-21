@@ -17,9 +17,16 @@ class Settings(BaseSettings):
     # Allowed CORS origins. "*" (default) allows any origin — fine for local dev.
     cors_origins: str = "*"
 
-    # Storage backend: "file" (durable JSON, default) or "memory" (ephemeral).
-    db_backend: Literal["memory", "file"] = "file"
+    # Storage backend: "file" (durable JSON, default), "memory" (ephemeral), or
+    # "sql" (async Postgres — needed for high-concurrency order writes; set
+    # database_url). "file" serializes every write behind one process lock and
+    # is fine only for a low order rate.
+    db_backend: Literal["memory", "file", "sql"] = "file"
     data_dir: str = "./data"
+    # Postgres connection URL for db_backend="sql" (e.g. a Neon pooled URL). The
+    # plain libpq form Neon/Render give you works as-is; it's normalised to the
+    # asyncpg driver internally.
+    database_url: str | None = None
 
     # --- Auth (HS256 tokens this API issues) ---
     # Customers sign in with a phone OTP; staff sign in with the admin password.
@@ -118,6 +125,8 @@ class Settings(BaseSettings):
             errors.append("ADMIN_PASSWORD is still the default — set a strong password.")
         if self.cors_origins.strip() == "*":
             errors.append("CORS_ORIGINS is '*' — set an explicit frontend allowlist.")
+        if self.db_backend == "sql" and not self.database_url:
+            errors.append("DB_BACKEND=sql but DATABASE_URL is unset.")
         if self.otp_demo_mode:
             errors.append(
                 "OTP_DEMO_MODE is on — codes would be echoed to clients. "

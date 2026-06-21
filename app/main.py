@@ -76,7 +76,17 @@ async def lifespan(app: FastAPI):
         for w in settings.production_warnings():
             logger.warning("config_warning", note=w)
 
-    backends = _build_backends()
+    sql_engine = None
+    if settings.db_backend == "sql":
+        if not settings.database_url:
+            raise RuntimeError("DB_BACKEND=sql requires DATABASE_URL to be set.")
+        from app.db.repositories.sql_store import create_sql_backends
+
+        sql_engine, backends = await create_sql_backends(
+            settings.database_url, CONTAINERS
+        )
+    else:
+        backends = _build_backends()
 
     menu_service = MenuService(backends["menu_items"])
     table_service = TableService(backends["tables"])
@@ -122,6 +132,8 @@ async def lifespan(app: FastAPI):
     )
 
     yield
+    if sql_engine is not None:
+        await sql_engine.dispose()
     logger.info("shutdown")
 
 
