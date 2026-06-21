@@ -1,4 +1,4 @@
-import { tokenFor } from "./auth";
+import { tokenFor, clearCustomer, clearAdmin } from "./auth";
 
 export const BASE = (import.meta.env.VITE_API_BASE || "http://localhost:8000").replace(/\/$/, "");
 
@@ -17,6 +17,12 @@ async function request(path, { method = "GET", body, auth = false } = {}) {
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) {
+    // A rejected token (server restarted, expired, tampered) should drop the
+    // stale session so the UI can re-prompt instead of looping on it.
+    if (res.status === 401 && auth) {
+      if (auth === "customer") clearCustomer();
+      else if (auth === "admin") clearAdmin();
+    }
     let detail = `${res.status}`;
     try {
       const data = await res.json();

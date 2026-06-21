@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, rupees } from "../api";
-import { getCustomer } from "../auth";
+import { getCustomer, clearCustomer } from "../auth";
 import { payWithRazorpay } from "../payments";
 import { Button, Spinner, VegMark } from "./ui";
 import OtpLogin from "./OtpLogin";
@@ -21,6 +21,20 @@ export default function Checkout({ table, lines, notes, totals, provider, onClos
     return api.placeOrder({ table_id: table.id, items: itemsPayload, notes });
   }
 
+  // If the session token was rejected (expired/invalid), drop it and send the
+  // diner back to the OTP step instead of showing a dead-end error.
+  function handleError(err) {
+    const msg = err.message || "";
+    if (msg.startsWith("401") || /token|sign-in/i.test(msg)) {
+      clearCustomer();
+      setCustomerState(null);
+      setDemoIntent(null);
+      setError("Your session expired — please verify your number again.");
+    } else {
+      setError(msg.replace(/^\d+:\s*/, ""));
+    }
+  }
+
   async function payOnline() {
     setError("");
     setBusy("online");
@@ -35,7 +49,7 @@ export default function Checkout({ table, lines, notes, totals, provider, onClos
         setDemoIntent({ order, intent });
       }
     } catch (err) {
-      setError(err.message.replace(/^\d+:\s*/, ""));
+      handleError(err);
     } finally {
       setBusy("");
     }
@@ -48,7 +62,7 @@ export default function Checkout({ table, lines, notes, totals, provider, onClos
       await api.confirmDemo(demoIntent.order.id, demoIntent.intent.razorpay_order_id, outcome);
       navigate(`/order/${demoIntent.order.id}`);
     } catch (err) {
-      setError(err.message.replace(/^\d+:\s*/, ""));
+      handleError(err);
     } finally {
       setBusy("");
     }
@@ -62,7 +76,7 @@ export default function Checkout({ table, lines, notes, totals, provider, onClos
       await api.payCash(order.id);
       navigate(`/order/${order.id}`);
     } catch (err) {
-      setError(err.message.replace(/^\d+:\s*/, ""));
+      handleError(err);
     } finally {
       setBusy("");
     }
@@ -86,7 +100,10 @@ export default function Checkout({ table, lines, notes, totals, provider, onClos
         </div>
 
         {!customer ? (
-          <OtpLogin onDone={(c) => setCustomerState(c)} />
+          <>
+            {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
+            <OtpLogin onDone={(c) => setCustomerState(c)} />
+          </>
         ) : demoIntent ? (
           <DemoGateway
             intent={demoIntent.intent}

@@ -6,10 +6,27 @@ const C_PHONE = "hsr_customer_phone";
 const C_NAME = "hsr_customer_name";
 const A_TOKEN = "hsr_admin_token";
 
+// Returns true if a JWT's `exp` claim is in the past (or it can't be parsed).
+function isExpired(token) {
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1]));
+    if (!payload.exp) return false;
+    return payload.exp * 1000 <= Date.now();
+  } catch {
+    return true; // unparseable token → treat as dead
+  }
+}
+
 // --- customer ---
 export function getCustomer() {
   const token = localStorage.getItem(C_TOKEN);
   if (!token) return null;
+  // A stale/expired token should read as "signed out" so the UI re-prompts for
+  // OTP instead of failing at checkout with "Invalid or expired token".
+  if (isExpired(token)) {
+    clearCustomer();
+    return null;
+  }
   return {
     token,
     phone: localStorage.getItem(C_PHONE) || "",
@@ -29,7 +46,13 @@ export function clearCustomer() {
 
 // --- admin ---
 export function getAdminToken() {
-  return localStorage.getItem(A_TOKEN);
+  const token = localStorage.getItem(A_TOKEN);
+  if (!token) return null;
+  if (isExpired(token)) {
+    clearAdmin();
+    return null;
+  }
+  return token;
 }
 export function setAdminToken(token) {
   localStorage.setItem(A_TOKEN, token);
