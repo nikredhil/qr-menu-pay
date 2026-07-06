@@ -5,6 +5,7 @@ import { getCustomer, clearCustomer } from "../auth";
 import { payWithRazorpay } from "../payments";
 import { Button, Spinner, VegMark } from "./ui";
 import OtpLogin from "./OtpLogin";
+import { UpiPinScreen, CardScreen, NetbankingScreen } from "./PaymentMock";
 
 // Slide-up sheet that takes the cart through: verify phone → choose payment →
 // pay (Razorpay/UPI/card, the built-in demo gateway, or cash) → order page.
@@ -153,7 +154,6 @@ export default function Checkout({ table, lines, notes, totals, provider, onClos
               </Button>
               <p className="text-center text-[11px] text-slate-400">
                 Google Pay · PhonePe · Paytm · Credit / Debit card
-                {provider === "demo" ? " — demo gateway" : ""}
               </p>
               <Button variant="outline" className="w-full" onClick={payCash} disabled={!!busy}>
                 {busy === "cash" ? <Spinner /> : "Pay with Cash at counter"}
@@ -178,26 +178,106 @@ function Row({ label, value, bold }) {
   );
 }
 
-function DemoGateway({ intent, busy, error, onResult }) {
-  return (
-    <div className="space-y-4 text-center">
-      <div className="rounded-xl border border-dashed border-club-orange/50 bg-club-cream p-4">
-        <p className="text-sm font-semibold text-slate-700">Demo payment gateway</p>
-        <p className="mt-1 text-xs text-slate-500">
-          No Razorpay keys are configured, so no real money moves. This stands in for the UPI /
-          card sheet your members would see. Add test keys to run real Razorpay Checkout.
+// Payment methods shown in the sheet. Each renders a coloured monogram so the
+// list reads like a real gateway without loading any external logos.
+const PAY_METHODS = [
+  { id: "phonepe", label: "PhonePe", sub: "UPI", mono: "Pe", bg: "#5f259f" },
+  { id: "gpay", label: "Google Pay", sub: "UPI", mono: "G", bg: "#1a73e8" },
+  { id: "paytm", label: "Paytm", sub: "UPI · Wallet", mono: "P", bg: "#00baf2" },
+  { id: "card", label: "Credit / Debit Card", sub: "Visa · Mastercard · RuPay", mono: "💳", bg: "#0f172a" },
+  { id: "netbanking", label: "Netbanking", sub: "All major banks", mono: "🏦", bg: "#334155" },
+];
+
+function DemoGateway({ intent, error, onResult }) {
+  const [step, setStep] = useState("select"); // select | upi | card | netbanking | processing | done
+  const [method, setMethod] = useState(null);
+  const amount = rupees(intent.amount / 100);
+
+  function choose(m) {
+    setMethod(m);
+    if (m.id === "card") setStep("card");
+    else if (m.id === "netbanking") setStep("netbanking");
+    else setStep("upi"); // phonepe / gpay / paytm
+  }
+
+  // Called by a method screen once the diner "completes" it. Show the
+  // processing → received animation, then confirm on the server + navigate.
+  function complete() {
+    setStep("processing");
+    setTimeout(() => {
+      setStep("done");
+      setTimeout(() => onResult("success"), 1100);
+    }, 1600);
+  }
+
+  if (step === "upi") {
+    return (
+      <UpiPinScreen method={method} amountLabel={amount} onPaid={complete} onBack={() => setStep("select")} />
+    );
+  }
+  if (step === "card") {
+    return <CardScreen amountLabel={amount} onPaid={complete} onBack={() => setStep("select")} />;
+  }
+  if (step === "netbanking") {
+    return <NetbankingScreen amountLabel={amount} onPaid={complete} onBack={() => setStep("select")} />;
+  }
+
+  if (step === "processing" || step === "done") {
+    const done = step === "done";
+    return (
+      <div className="flex flex-col items-center gap-3 py-8 text-center">
+        {done ? (
+          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-100 text-4xl text-green-600">
+            ✓
+          </div>
+        ) : (
+          <span className="inline-block h-10 w-10 animate-spin rounded-full border-4 border-club-orange border-t-transparent" />
+        )}
+        <p className="text-lg font-bold text-slate-800">
+          {done ? "Payment received" : "Processing payment…"}
         </p>
-        <p className="mt-2 text-lg font-bold text-club-blue">{rupees(intent.amount / 100)}</p>
+        <p className="text-2xl font-bold text-club-blue">{amount}</p>
+        <p className="text-xs text-slate-400">
+          {done ? "Confirming your order…" : `via ${method?.label}`}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-xl bg-club-cream px-4 py-3 text-center">
+        <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Amount payable</p>
+        <p className="mt-0.5 text-2xl font-bold text-club-blue">{amount}</p>
       </div>
       {error && <p className="text-sm text-red-600">{error}</p>}
-      <div className="grid grid-cols-2 gap-2">
-        <Button variant="green" onClick={() => onResult("success")} disabled={busy}>
-          {busy ? <Spinner /> : "Simulate success"}
-        </Button>
-        <Button variant="danger" onClick={() => onResult("fail")} disabled={busy}>
-          Simulate failure
-        </Button>
+      <p className="px-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
+        Choose a payment method
+      </p>
+      <div className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200">
+        {PAY_METHODS.map((m) => (
+          <button
+            key={m.id}
+            onClick={() => choose(m)}
+            className="flex w-full items-center gap-3 px-3 py-3 text-left transition hover:bg-slate-50"
+          >
+            <span
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-sm font-bold text-white"
+              style={{ backgroundColor: m.bg }}
+            >
+              {m.mono}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-semibold text-slate-800">{m.label}</span>
+              <span className="block text-xs text-slate-400">{m.sub}</span>
+            </span>
+            <span className="text-slate-300">›</span>
+          </button>
+        ))}
       </div>
+      <p className="flex items-center justify-center gap-1 pt-1 text-center text-[11px] text-slate-400">
+        <span>🔒</span> Payments are secure &amp; encrypted
+      </p>
     </div>
   );
 }

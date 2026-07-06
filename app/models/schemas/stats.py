@@ -17,6 +17,18 @@ class PeriodStats(BaseModel):
     revenue: float         # sum of paid order totals
 
 
+class RepeatDiner(BaseModel):
+    """A returning guest (2+ visits) shown on the dashboard with their profile."""
+    phone: str
+    name: str | None = None
+    visits: int
+    total_spent: float
+    points: float
+    last_visit_at: str | None = None
+    member_since: str | None = None
+    favorite_items: list[str] = []  # their most-ordered dishes
+
+
 class DashboardStats(BaseModel):
     today: PeriodStats
     all_time: PeriodStats
@@ -27,4 +39,5 @@ class DashboardStats(BaseModel):
     top_items: list[TopItem]
     average_rating: float
     feedback_count: int
-    repeat_customers: int  # customers with 2+ paid visits
+    repeat_customers: int  # count of customers with 2+ visits
+    repeat_diners: list[RepeatDiner] = []  # who they are, most-frequent first

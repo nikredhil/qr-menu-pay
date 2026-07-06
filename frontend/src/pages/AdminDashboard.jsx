@@ -85,10 +85,10 @@ export default function AdminDashboard() {
           <h2 className="mb-3 text-sm font-bold text-slate-700">Breakdown</h2>
           <Group title="Payment mix" data={stats.payment_mix} />
           <Group title="Kitchen status" data={stats.status_mix} />
-          <div className="mt-3 flex justify-between border-t border-slate-100 pt-3 text-sm">
-            <span className="text-slate-500">Repeat diners (2+ visits)</span>
-            <span className="font-semibold text-slate-800">{stats.repeat_customers}</span>
-          </div>
+          <RepeatDiners
+            count={stats.repeat_customers}
+            diners={stats.repeat_diners || []}
+          />
         </Card>
       </div>
     </AdminShell>
@@ -102,6 +102,97 @@ function Stat({ label, value, sub, accent }) {
       <div className="mt-1 text-2xl font-extrabold text-slate-800">{value}</div>
       {sub && <div className="mt-0.5 text-xs text-slate-400">{sub}</div>}
     </Card>
+  );
+}
+
+function fmtDate(iso) {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+  } catch {
+    return "—";
+  }
+}
+
+function RepeatDiners({ count, diners }) {
+  return (
+    <div className="mt-3 border-t border-slate-100 pt-3">
+      <div className="flex justify-between text-sm">
+        <span className="text-slate-500">Repeat diners (2+ visits)</span>
+        <span className="font-semibold text-slate-800">{count}</span>
+      </div>
+      {diners.length > 0 ? (
+        <ul className="mt-2 space-y-1.5">
+          {diners.map((d) => (
+            <RepeatDinerRow key={d.phone} d={d} />
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-1 text-xs text-slate-400">No returning guests yet.</p>
+      )}
+    </div>
+  );
+}
+
+function RepeatDinerRow({ d }) {
+  const [open, setOpen] = useState(false);
+  const label = d.name || `+91 ${d.phone}`;
+  const initials = (d.name || "Guest")
+    .split(" ")
+    .map((w) => w[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+
+  return (
+    <li className="overflow-hidden rounded-lg border border-slate-100">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center gap-2.5 px-2.5 py-2 text-left hover:bg-slate-50"
+      >
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-club-orange/15 text-xs font-bold text-club-orange">
+          {initials}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium text-slate-800">{label}</span>
+          <span className="block text-xs text-slate-400">
+            {d.visits} visits · {rupees(d.total_spent)} spent
+          </span>
+        </span>
+        <span className="shrink-0 text-xs text-slate-400">{open ? "▲" : "▼"}</span>
+      </button>
+      {open && (
+        <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5 border-t border-slate-100 bg-slate-50/60 px-3 py-2.5 text-xs">
+          <Detail label="Phone" value={`+91 ${d.phone}`} />
+          <Detail label="Loyalty points" value={Math.round(d.points)} />
+          <Detail label="Last visit" value={fmtDate(d.last_visit_at)} />
+          <Detail label="Member since" value={fmtDate(d.member_since)} />
+          <div className="col-span-2">
+            <dt className="text-slate-400">Favourite dishes</dt>
+            <dd className="mt-1 flex flex-wrap gap-1">
+              {d.favorite_items.length ? (
+                d.favorite_items.map((f) => (
+                  <span key={f} className="rounded-full bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600 ring-1 ring-slate-200">
+                    {f}
+                  </span>
+                ))
+              ) : (
+                <span className="text-slate-400">—</span>
+              )}
+            </dd>
+          </div>
+        </dl>
+      )}
+    </li>
+  );
+}
+
+function Detail({ label, value }) {
+  return (
+    <div>
+      <dt className="text-slate-400">{label}</dt>
+      <dd className="font-medium text-slate-700">{value}</dd>
+    </div>
   );
 }
 
