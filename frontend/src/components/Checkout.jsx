@@ -14,11 +14,15 @@ export default function Checkout({ table, lines, notes, totals, provider, onClos
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [demoIntent, setDemoIntent] = useState(null); // {order, intent} when demo gateway
-
-  const itemsPayload = lines.map((l) => ({ menu_item_id: l.id, quantity: l.qty }));
+  const [itemNotes, setItemNotes] = useState({}); // { lineId: "no onions" }
 
   async function createOrder() {
-    return api.placeOrder({ table_id: table.id, items: itemsPayload, notes });
+    const items = lines.map((l) => ({
+      menu_item_id: l.id,
+      quantity: l.qty,
+      notes: (itemNotes[l.id] || "").trim(),
+    }));
+    return api.placeOrder({ table_id: table.id, items, notes });
   }
 
   // If the session token was rejected (expired/invalid), drop it and send the
@@ -115,14 +119,23 @@ export default function Checkout({ table, lines, notes, totals, provider, onClos
           <>
             <ul className="mb-3 divide-y divide-slate-100">
               {lines.map((l) => (
-                <li key={l.id} className="flex items-center justify-between py-2 text-sm">
-                  <span className="flex items-center gap-2">
-                    <VegMark veg={l.veg} />
-                    <span className="text-slate-700">
-                      {l.name} <span className="text-slate-400">× {l.qty}</span>
+                <li key={l.id} className="py-2 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-2">
+                      <VegMark veg={l.veg} />
+                      <span className="text-slate-700">
+                        {l.name} <span className="text-slate-400">× {l.qty}</span>
+                      </span>
                     </span>
-                  </span>
-                  <span className="font-medium text-slate-700">{rupees(l.price * l.qty)}</span>
+                    <span className="font-medium text-slate-700">{rupees(l.price * l.qty)}</span>
+                  </div>
+                  <input
+                    value={itemNotes[l.id] || ""}
+                    onChange={(e) => setItemNotes((n) => ({ ...n, [l.id]: e.target.value }))}
+                    maxLength={200}
+                    placeholder="Note for the kitchen (e.g. no onions)"
+                    className="mt-1.5 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs text-slate-600 outline-none focus:border-club-orange focus:bg-white"
+                  />
                 </li>
               ))}
             </ul>

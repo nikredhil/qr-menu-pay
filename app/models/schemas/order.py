@@ -15,6 +15,7 @@ PAYMENT_METHODS = ["razorpay", "cash"]
 class OrderItemInput(BaseModel):
     menu_item_id: str
     quantity: int = Field(ge=1, le=50)
+    notes: str = Field(default="", max_length=200)  # per-dish kitchen instruction
 
 
 class OrderCreate(BaseModel):
@@ -29,6 +30,7 @@ class OrderLine(BaseModel):
     unit_price: float
     quantity: int
     veg: bool = True
+    notes: str = ""  # per-dish kitchen instruction, e.g. "no onions"
 
     @property
     def line_total(self) -> float:

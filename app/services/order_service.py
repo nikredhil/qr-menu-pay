@@ -86,6 +86,7 @@ class OrderService:
                     unit_price=item.price,
                     quantity=entry.quantity,
                     veg=item.veg,
+                    notes=entry.notes.strip(),
                 )
             )
 

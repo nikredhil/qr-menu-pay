@@ -153,10 +153,15 @@ export default function AdminOrders() {
 
             <ul className="my-3 flex-1 space-y-1 text-sm">
               {o.lines.map((l) => (
-                <li key={l.menu_item_id} className="flex items-center gap-2 text-slate-700">
-                  <VegMark veg={l.veg} />
-                  <span className="flex-1 truncate">{l.name}</span>
-                  <span className="text-slate-400">× {l.quantity}</span>
+                <li key={l.menu_item_id} className="text-slate-700">
+                  <div className="flex items-center gap-2">
+                    <VegMark veg={l.veg} />
+                    <span className="flex-1 truncate">{l.name}</span>
+                    <span className="text-slate-400">× {l.quantity}</span>
+                  </div>
+                  {l.notes && (
+                    <p className="ml-6 text-xs font-medium text-club-orange">↳ {l.notes}</p>
+                  )}
                 </li>
               ))}
             </ul>

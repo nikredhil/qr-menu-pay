@@ -82,14 +82,17 @@ export default function OrderStatus() {
 
             <ul className="divide-y divide-slate-100">
               {order.lines.map((l) => (
-                <li key={l.menu_item_id} className="flex items-center justify-between py-2 text-sm">
-                  <span className="flex items-center gap-2">
-                    <VegMark veg={l.veg} />
-                    <span className="text-slate-700">
-                      {l.name} <span className="text-slate-400">× {l.quantity}</span>
+                <li key={l.menu_item_id} className="py-2 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-2">
+                      <VegMark veg={l.veg} />
+                      <span className="text-slate-700">
+                        {l.name} <span className="text-slate-400">× {l.quantity}</span>
+                      </span>
                     </span>
-                  </span>
-                  <span className="font-medium text-slate-700">{rupees(l.unit_price * l.quantity)}</span>
+                    <span className="font-medium text-slate-700">{rupees(l.unit_price * l.quantity)}</span>
+                  </div>
+                  {l.notes && <p className="ml-6 mt-0.5 text-xs text-club-orange">↳ {l.notes}</p>}
                 </li>
               ))}
             </ul>
