@@ -1,18 +1,32 @@
 # Render blueprint for the HSR Club Dine FastAPI backend.
 # Create the service: Render Dashboard → New → Blueprint → pick this repo.
 # Frontend deploys separately on Vercel/Netlify (see frontend/vercel.json).
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# THIS BLUEPRINT IS TUNED FOR A ZERO-DEPENDENCY DEMO:
+#   • ENVIRONMENT=dev      → skips the prod boot-guard, so it runs with the
+#                            built-in demo payment gateway + on-screen OTP.
+#   • DB_BACKEND=file      → no external database needed (Neon/Postgres).
+#   • No Razorpay keys     → checkout completes via the demo gateway (no money).
+#   • OTP_DEMO_MODE=true   → login code is shown on screen (no SMS provider).
+# It stands up with just TWO accounts: Render (this) + Vercel (frontend).
+#
+# TO GO FULLY PRODUCTION LATER (see DEPLOY.md for the full runbook):
+#   ENVIRONMENT=prod, DB_BACKEND=sql, set DATABASE_URL (Neon pooled),
+#   set RAZORPAY_KEY_ID/SECRET (+ webhook), OTP_DEMO_MODE=false + SMS provider.
+# ─────────────────────────────────────────────────────────────────────────────
 services:
   - type: web
     name: hsr-club-dine-api
     runtime: python
     plan: free
     buildCommand: pip install -r requirements.txt
-    # Seed the menu + tables into local JSON if missing, push them into Postgres
-    # (idempotent upsert), then start the API. With DB_BACKEND=sql, orders live
-    # in Postgres and survive restarts even on the free plan's ephemeral disk.
+    # Seed the menu + tables into local JSON if missing, then start the API.
+    # The migrate-to-Postgres step only runs when DB_BACKEND=sql, so this same
+    # command works for both the demo (file) and a later production (sql) setup.
     startCommand: >-
       sh -c '[ -f data/menu_items.json ] || python -m scripts.seed_data;
-      python -m scripts.migrate_json_to_sql;
+      [ "$DB_BACKEND" = "sql" ] && python -m scripts.migrate_json_to_sql;
       uvicorn app.main:app --host 0.0.0.0 --port $PORT'
     healthCheckPath: /health
     envVars:
@@ -20,32 +34,39 @@ services:
       # newer default has no wheel and tries to compile it with Rust, which fails.)
       - key: PYTHON_VERSION
         value: 3.12.8
+      # DEMO: dev skips the production boot-guard (demo gateway + on-screen OTP).
+      # PROD: set to "prod".
       - key: ENVIRONMENT
-        value: prod
-      # Postgres backend — handles concurrent order writes (a busy-rush venue).
-      # "file" is single-writer and only fits a low order rate.
+        value: dev
+      # DEMO: file storage — no external DB. Data is ephemeral on the free plan
+      # (resets on redeploy/sleep), which is fine for a demo; the menu re-seeds
+      # on boot. PROD: set to "sql" and provide DATABASE_URL below.
       - key: DB_BACKEND
-        value: sql
-      # Neon (or any) Postgres URL. Use Neon's *pooled* connection string. Set
-      # the real value in the Render dashboard — never commit it.
+        value: file
+      # PROD only (DB_BACKEND=sql): Neon *pooled* connection string. Leave unset
+      # for the demo. Set the real value in the Render dashboard — never commit it.
       - key: DATABASE_URL
         sync: false
       - key: DATA_DIR
         value: ./data
-      # Lock CORS to your deployed frontend origin(s).
+      # Lock CORS to your deployed frontend origin(s). After the Vercel deploy,
+      # set this to that exact origin (e.g. https://hsr-club-dine.vercel.app) —
+      # no trailing slash, comma-separate multiple — then redeploy this service.
       - key: CORS_ORIGINS
-        value: https://dine.hsrclub.in
+        sync: false
       # Auth secret for the customer/staff JWTs — generated once by Render.
       - key: JWT_SECRET
         generateValue: true
-      # Staff dashboard password — set the real value in the Render dashboard.
+      # Staff dashboard password (login at /admin). Set a value you'll remember
+      # for the demo in the Render dashboard.
       - key: ADMIN_PASSWORD
         sync: false
-      # Phone OTP. Keep demo mode off in production once an SMS provider is wired.
+      # Phone OTP. DEMO: true → login code shown on screen (no SMS provider).
+      # PROD: false, with an SMS provider configured (see DEPLOY.md).
       - key: OTP_DEMO_MODE
         value: "true"
-      # Razorpay — secrets, set in the Render dashboard (not committed here).
-      # Use test keys first, then live keys after KYC.
+      # Razorpay — leave BLANK for the demo (checkout uses the built-in demo
+      # gateway). PROD: set test keys first, then live keys after KYC.
       - key: RAZORPAY_KEY_ID
         sync: false
       - key: RAZORPAY_KEY_SECRET
