@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import uuid
 from datetime import datetime, timezone
 
 from app.core.config import get_settings
@@ -71,13 +70,47 @@ TABLES: list[tuple[str, str, int]] = [
     ("Pool Deck 1", "Pool Deck", 4),
 ]
 
-# A few sample translations (Hindi / Kannada) so the language switcher is
-# demonstrable out of the box. Real menus would translate every item.
+# Hindi / Kannada name translations for every dish so the in-menu language
+# switcher works across the whole menu (descriptions fall back to English).
 TRANSLATIONS: dict[str, dict] = {
+    # Starters
     "Paneer Tikka": {"hi": {"name": "पनीर टिक्का"}, "kn": {"name": "ಪನೀರ್ ಟಿಕ್ಕಾ"}},
+    "Hara Bhara Kabab": {"hi": {"name": "हरा भरा कबाब"}, "kn": {"name": "ಹರಾ ಭರಾ ಕಬಾಬ್"}},
+    "Chicken 65": {"hi": {"name": "चिकन 65"}, "kn": {"name": "ಚಿಕನ್ 65"}},
+    "Mutton Seekh Kabab": {"hi": {"name": "मटन सीख कबाब"}, "kn": {"name": "ಮಟನ್ ಸೀಖ್ ಕಬಾಬ್"}},
+    "Crispy Corn": {"hi": {"name": "क्रिस्पी कॉर्न"}, "kn": {"name": "ಕ್ರಿಸ್ಪಿ ಕಾರ್ನ್"}},
+    # Soups & Salads
+    "Cream of Tomato Soup": {"hi": {"name": "क्रीम ऑफ़ टमाटर सूप"}, "kn": {"name": "ಟೊಮ್ಯಾಟೊ ಕ್ರೀಮ್ ಸೂಪ್"}},
+    "Sweet Corn Chicken Soup": {"hi": {"name": "स्वीट कॉर्न चिकन सूप"}, "kn": {"name": "ಸ್ವೀಟ್ ಕಾರ್ನ್ ಚಿಕನ್ ಸೂಪ್"}},
+    "Garden Green Salad": {"hi": {"name": "गार्डन ग्रीन सलाद"}, "kn": {"name": "ಗಾರ್ಡನ್ ಗ್ರೀನ್ ಸಲಾಡ್"}},
+    # Main Course
+    "Paneer Butter Masala": {"hi": {"name": "पनीर बटर मसाला"}, "kn": {"name": "ಪನೀರ್ ಬಟರ್ ಮಸಾಲಾ"}},
+    "Dal Makhani": {"hi": {"name": "दाल मखनी"}, "kn": {"name": "ದಾಲ್ ಮಖನಿ"}},
     "Butter Chicken": {"hi": {"name": "बटर चिकन"}, "kn": {"name": "ಬಟರ್ ಚಿಕನ್"}},
+    "Mutton Rogan Josh": {"hi": {"name": "मटन रोगन जोश"}, "kn": {"name": "ಮಟನ್ ರೋಗನ್ ಜೋಶ್"}},
+    "Kadai Veg": {"hi": {"name": "कड़ाही वेज"}, "kn": {"name": "ಕಡಾಯಿ ವೆಜ್"}},
+    # Breads & Rice
+    "Butter Naan": {"hi": {"name": "बटर नान"}, "kn": {"name": "ಬಟರ್ ನಾನ್"}},
+    "Garlic Naan": {"hi": {"name": "गार्लिक नान"}, "kn": {"name": "ಗಾರ್ಲಿಕ್ ನಾನ್"}},
+    "Tandoori Roti": {"hi": {"name": "तंदूरी रोटी"}, "kn": {"name": "ತಂದೂರಿ ರೊಟ್ಟಿ"}},
+    "Veg Dum Biryani": {"hi": {"name": "वेज दम बिरयानी"}, "kn": {"name": "ವೆಜ್ ದಮ್ ಬಿರಿಯಾನಿ"}},
+    "Chicken Dum Biryani": {"hi": {"name": "चिकन दम बिरयानी"}, "kn": {"name": "ಚಿಕನ್ ದಮ್ ಬಿರಿಯಾನಿ"}},
+    "Jeera Rice": {"hi": {"name": "जीरा राइस"}, "kn": {"name": "ಜೀರಾ ರೈಸ್"}},
+    # Chinese
+    "Veg Hakka Noodles": {"hi": {"name": "वेज हक्का नूडल्स"}, "kn": {"name": "ವೆಜ್ ಹಕ್ಕಾ ನೂಡಲ್ಸ್"}},
+    "Chicken Fried Rice": {"hi": {"name": "चिकन फ्राइड राइस"}, "kn": {"name": "ಚಿಕನ್ ಫ್ರೈಡ್ ರೈಸ್"}},
+    "Gobi Manchurian": {"hi": {"name": "गोबी मंचूरियन"}, "kn": {"name": "ಗೋಬಿ ಮಂಚೂರಿಯನ್"}},
+    "Chilli Chicken": {"hi": {"name": "चिली चिकन"}, "kn": {"name": "ಚಿಲ್ಲಿ ಚಿಕನ್"}},
+    # Beverages
+    "Fresh Lime Soda": {"hi": {"name": "फ्रेश लाइम सोडा"}, "kn": {"name": "ಫ್ರೆಶ್ ಲೈಮ್ ಸೋಡಾ"}},
     "Masala Chaas": {"hi": {"name": "मसाला छाछ"}, "kn": {"name": "ಮಸಾಲಾ ಮಜ್ಜಿಗೆ"}},
-    "Gulab Jamun (2 pc)": {"hi": {"name": "गुलाब जामुन"}, "kn": {"name": "ಗುಲಾಬ್ ಜಾಮೂನ್"}},
+    "Cold Coffee": {"hi": {"name": "कोल्ड कॉफ़ी"}, "kn": {"name": "ಕೋಲ್ಡ್ ಕಾಫಿ"}},
+    "Filter Coffee": {"hi": {"name": "फ़िल्टर कॉफ़ी"}, "kn": {"name": "ಫಿಲ್ಟರ್ ಕಾಫಿ"}},
+    "Mineral Water (1L)": {"hi": {"name": "मिनरल वाटर (1 लीटर)"}, "kn": {"name": "ಮಿನರಲ್ ವಾಟರ್ (1 ಲೀ)"}},
+    # Desserts
+    "Gulab Jamun (2 pc)": {"hi": {"name": "गुलाब जामुन (2 पीस)"}, "kn": {"name": "ಗುಲಾಬ್ ಜಾಮೂನ್ (2 ಪೀಸ್)"}},
+    "Gajar Ka Halwa": {"hi": {"name": "गाजर का हलवा"}, "kn": {"name": "ಗಾಜರ್ ಹಲ್ವಾ"}},
+    "Vanilla Ice Cream": {"hi": {"name": "वनीला आइसक्रीम"}, "kn": {"name": "ವೆನಿಲಾ ಐಸ್‌ಕ್ರೀಮ್"}},
 }
 
 # Sample food photos (royalty-free Unsplash) for a few dishes to show the
@@ -104,6 +137,13 @@ async def main() -> None:
     settings = get_settings()
     os.makedirs(settings.data_dir, exist_ok=True)
 
+    # Start from a clean slate so re-running the seed replaces the menu/tables
+    # rather than appending duplicates (the store is keyed by id).
+    for fname in ("menu_items.json", "tables.json", "outlets.json"):
+        fpath = os.path.join(settings.data_dir, fname)
+        if os.path.exists(fpath):
+            os.remove(fpath)
+
     menu_repo = JsonFileRepository(os.path.join(settings.data_dir, "menu_items.json"))
     table_repo = JsonFileRepository(os.path.join(settings.data_dir, "tables.json"))
 
@@ -122,7 +162,9 @@ async def main() -> None:
     for name, desc, price, category, veg in MENU:
         await menu_repo.create(
             {
-                "id": str(uuid.uuid4()),
+                # Stable id derived from the name → re-seeding overwrites the
+                # same record instead of creating a duplicate.
+                "id": "ITEM-" + _slug(name),
                 "name": name,
                 "description": desc,
                 "price": float(price),
