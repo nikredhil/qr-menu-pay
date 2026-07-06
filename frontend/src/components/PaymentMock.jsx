@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "./ui";
 
 // Realistic-looking (but entirely fake) payment screens for the demo. None of
@@ -12,17 +12,26 @@ const VPA = "hsrclubdine@upi";
 export function UpiPinScreen({ method, amountLabel, onPaid, onBack }) {
   const [pin, setPin] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const fired = useRef(false); // ensure we complete exactly once
 
   useEffect(() => {
-    if (pin.length === 6 && !submitting) {
+    if (pin.length === 6 && !fired.current) {
+      fired.current = true;
       setSubmitting(true);
-      const t = setTimeout(onPaid, 700);
-      return () => clearTimeout(t);
+      // No cleanup here on purpose: a self-cancelling timeout would be cleared
+      // by the re-render that setSubmitting triggers, leaving it stuck.
+      setTimeout(() => onPaid(), 700);
     }
-  }, [pin, submitting, onPaid]);
+  }, [pin, onPaid]);
 
-  const press = (d) => setPin((p) => (p.length < 6 ? p + d : p));
-  const back = () => setPin((p) => p.slice(0, -1));
+  const press = (d) => {
+    if (submitting) return;
+    setPin((p) => (p.length < 6 ? p + d : p));
+  };
+  const back = () => {
+    if (submitting) return;
+    setPin((p) => p.slice(0, -1));
+  };
 
   return (
     <div className="-m-5 overflow-hidden rounded-t-3xl sm:rounded-3xl">
